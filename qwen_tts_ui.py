@@ -19,6 +19,7 @@ import gc
 import queue
 import threading
 import traceback
+import html as html_escape
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
@@ -543,20 +544,25 @@ def format_history_for_display(search_query="", favorites_only=False):
         duration_str = format_duration(duration) if duration else "—"
         gen_time_str = f"{gen_time:.1f}s" if gen_time else "—"
 
+        safe_id = html_escape.escape(str(item_id))
+        safe_text = html_escape.escape(str(text_preview))
+        safe_voice = html_escape.escape(str(voice))
+        safe_created = html_escape.escape(str(created))
+
         html_parts.append(f"""
-<div class="history-card" data-id="{item_id}">
+<div class="history-card" data-id="{safe_id}">
   <div class="history-card-header">
     <span class="history-icon">{icon}</span>
-    <span class="history-time">{created}</span>
+    <span class="history-time">{safe_created}</span>
     <span class="history-star" title="Toggle favorite">{star}</span>
   </div>
-  <div class="history-text">{text_preview}</div>
+  <div class="history-text">{safe_text}</div>
   <div class="history-meta">
-    <span class="history-voice">{voice}</span>
+    <span class="history-voice">{safe_voice}</span>
     <span class="history-duration">🎵 {duration_str}</span>
     <span class="history-gentime">⏱ {gen_time_str}</span>
   </div>
-  <div class="history-id">ID: {item_id}</div>
+  <div class="history-id">ID: {safe_id}</div>
 </div>
 """)
 
@@ -2630,7 +2636,7 @@ def _render_persona_cards(personas: list) -> str:
 
 def _generate_persona_voice_preview(voice_id: str, voice_type: str) -> str | None:
     try:
-        from voice_cards_ui import generate_preview
+        from ui.voice_cards import generate_preview
 
         return generate_preview(voice_id, voice_type)
     except Exception as e:
@@ -2757,6 +2763,7 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                                 cv_history_apply = gr.Button(
                                     "Apply Settings", size="sm"
                                 )
+                                cv_history_favorite = gr.Button("★ Favorite", size="sm")
                                 cv_history_delete = gr.Button(
                                     "Delete", size="sm", variant="stop"
                                 )
@@ -2947,6 +2954,7 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                                 sv_history_apply = gr.Button(
                                     "Apply Settings", size="sm"
                                 )
+                                sv_history_favorite = gr.Button("★ Favorite", size="sm")
                                 sv_history_delete = gr.Button(
                                     "Delete", size="sm", variant="stop"
                                 )
@@ -2972,7 +2980,7 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                                 choices=_get_persona_voice_choices(),
                                 value=None,
                                 interactive=True,
-                                allow_custom_value=True,
+                                allow_custom_value=False,
                                 info="Choose a voice to create or edit its persona",
                             )
 
@@ -3641,6 +3649,9 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                                 podcast_history_refresh = gr.Button(
                                     "Refresh", size="sm"
                                 )
+                                podcast_history_favorite = gr.Button(
+                                    "★ Favorite", size="sm"
+                                )
                                 podcast_history_delete = gr.Button(
                                     "Delete", size="sm", variant="stop"
                                 )
@@ -4245,6 +4256,12 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                             )
                             return
 
+                        # Handle pandas DataFrame or list-of-lists from Gradio
+                        import pandas as pd
+
+                        if isinstance(editor_data, pd.DataFrame):
+                            editor_data = editor_data.values.tolist()
+
                         if editor_data is None or len(editor_data) == 0:
                             yield (
                                 create_step_indicator_html(GenerationStep.AUDIO, 0.0),
@@ -4577,6 +4594,9 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                         fn=load_podcast_history_item,
                         inputs=[podcast_history_dropdown],
                         outputs=[podcast_history_audio, podcast_history_metadata],
+                    ).then(
+                        fn=lambda: False,
+                        outputs=[podcast_history_delete_confirm],
                     )
 
                     podcast_history_refresh.click(
@@ -4596,6 +4616,15 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                             podcast_history_dropdown,
                             podcast_history_audio,
                             podcast_history_delete_confirm,
+                        ],
+                    )
+                    podcast_history_favorite.click(
+                        fn=toggle_favorite,
+                        inputs=[podcast_history_dropdown],
+                        outputs=[
+                            podcast_history_metadata,
+                            podcast_history_display,
+                            podcast_history_dropdown,
                         ],
                     )
                     podcast_history_search.change(
@@ -4761,6 +4790,9 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
         concurrency_id="history",
         concurrency_limit=None,
         show_progress="hidden",
+    ).then(
+        fn=lambda: False,
+        outputs=[cv_history_delete_confirm],
     )
     cv_history_refresh.click(
         fn=lambda: gr.update(choices=get_history_choices()),
@@ -4788,6 +4820,13 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
         concurrency_id="history",
         concurrency_limit=None,
     )
+    cv_history_favorite.click(
+        fn=toggle_favorite,
+        inputs=[cv_history_dropdown],
+        outputs=[cv_status, cv_history_display, cv_history_dropdown],
+        concurrency_id="history",
+        concurrency_limit=None,
+    )
     cv_history_search.change(
         fn=search_history,
         inputs=[cv_history_search, cv_history_favorites],
@@ -4812,6 +4851,9 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
         concurrency_id="history",
         concurrency_limit=None,
         show_progress="hidden",
+    ).then(
+        fn=lambda: False,
+        outputs=[sv_history_delete_confirm],
     )
     sv_history_refresh.click(
         fn=lambda: gr.update(choices=get_history_choices()),
@@ -4836,6 +4878,13 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
             sv_history_audio,
             sv_history_delete_confirm,
         ],
+        concurrency_id="history",
+        concurrency_limit=None,
+    )
+    sv_history_favorite.click(
+        fn=toggle_favorite,
+        inputs=[sv_history_dropdown],
+        outputs=[sv_status, sv_history_display, sv_history_dropdown],
         concurrency_id="history",
         concurrency_limit=None,
     )
