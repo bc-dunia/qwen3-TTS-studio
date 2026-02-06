@@ -165,6 +165,32 @@ Notes:
 - `qwen_tts_ui.py` now reads `GRADIO_SERVER_NAME` and `GRADIO_SERVER_PORT`; Docker image sets these to `0.0.0.0:7860`.
 - If you use other model variants (0.6B, VoiceDesign), mount those directories the same way.
 
+### Use Prebuilt Image from GHCR
+
+Pull the prebuilt image from GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/bc-dunia/qwen3-tts-studio:0.1.0
+```
+
+Run the container:
+
+```bash
+docker run --rm -it -p 7860:7860 \
+  --env-file .env \
+  -v "$(pwd)/Qwen3-TTS-Tokenizer-12Hz:/app/Qwen3-TTS-Tokenizer-12Hz" \
+  -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-CustomVoice:/app/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
+  -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-Base:/app/Qwen3-TTS-12Hz-1.7B-Base" \
+  ghcr.io/bc-dunia/qwen3-tts-studio:0.1.0
+```
+
+Then open `http://127.0.0.1:7860`.
+
+Notes:
+- Models are mounted at runtime and not bundled in the image. Mount the same directories as shown above.
+- Use `latest` tag for the most recent build: `ghcr.io/bc-dunia/qwen3-tts-studio:latest`
+- If you use other model variants (0.6B, VoiceDesign), mount those directories the same way.
+
 ### Available Models
 
 | Model | Features | Size |
