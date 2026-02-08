@@ -20,8 +20,8 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip && \
-    pip install "qwen-tts>=0.1.1,<0.2" && \
-    pip install gradio soundfile numpy moviepy openai anthropic packaging
+    pip install "qwen-tts>=0.1.1,<0.2" "gradio>=4.44.0,<5.0" \
+    soundfile numpy moviepy openai anthropic packaging
 
 # Final stage: runtime
 FROM python:3.12-slim
