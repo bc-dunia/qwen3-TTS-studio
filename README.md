@@ -68,8 +68,7 @@ conda activate qwen3-tts
 ### 3. Install Dependencies
 
 ```bash
-pip install "qwen-tts>=0.1.1" "gradio>=4.44.0,<5.0" \
-    soundfile numpy moviepy openai anthropic packaging
+pip install -r requirements.txt
 ```
 
 For CUDA users:

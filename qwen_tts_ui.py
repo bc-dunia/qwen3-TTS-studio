@@ -3318,7 +3318,7 @@ def _generate_persona_voice_preview(voice_id: str, voice_type: str) -> str | Non
         return None
 
 
-with gr.Blocks(title="Qwen3-TTS Studio") as demo:
+with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
     gr.HTML("""
     <div class="main-header">
         <h1 class="main-title">Qwen3-TTS Studio</h1>
@@ -4323,8 +4323,7 @@ with gr.Blocks(title="Qwen3-TTS Studio") as demo:
                                     label="Model",
                                     choices=PROVIDER_MODEL_OPTIONS[LLMProvider.OLLAMA],
                                     value=DEFAULT_MODELS[LLMProvider.OLLAMA],
-                                    placeholder="Model name (leave empty for default)",
-                                    info="Model to use for generation",
+                                    info="Model to use for generation (leave empty for default)",
                                     allow_custom_value=True,
                                 )
                                 podcast_llm_api_key = gr.Textbox(
@@ -6240,4 +6239,4 @@ if __name__ == "__main__":
     demo.queue(default_concurrency_limit=1)
     server_name = os.getenv("GRADIO_SERVER_NAME", "127.0.0.1")
     server_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
-    demo.launch(server_name=server_name, server_port=server_port, css=custom_css)
+    demo.launch(server_name=server_name, server_port=server_port)

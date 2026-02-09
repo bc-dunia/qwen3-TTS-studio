@@ -12,16 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only requirements (if available) or install directly
-COPY . /build
+# Copy requirements first for better layer caching
+COPY requirements.txt /build/requirements.txt
 
 # Install Python dependencies to a virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN pip install --upgrade pip && \
-    pip install "qwen-tts>=0.1.1,<0.2" "gradio>=4.44.0,<5.0" \
-    soundfile numpy moviepy openai anthropic packaging
+    pip install -r requirements.txt
 
 # Final stage: runtime
 FROM python:3.12-slim
