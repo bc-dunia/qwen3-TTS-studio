@@ -28,7 +28,7 @@ FROM python:3.12-slim
 # OCI Image Labels for GHCR metadata
 LABEL org.opencontainers.image.title="Qwen3-TTS Studio" \
       org.opencontainers.image.description="Professional-grade interface for Qwen3-TTS with fine-grained control and intuitive workflows" \
-      org.opencontainers.image.version="0.1.4" \
+      org.opencontainers.image.version="0.1.5" \
       org.opencontainers.image.source="https://github.com/bc-dunia/qwen3-tts-studio" \
       org.opencontainers.image.authors="bc-dunia" \
       org.opencontainers.image.vendor="bc-dunia" \
