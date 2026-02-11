@@ -191,8 +191,19 @@ def get_model(model_name: str):
             Path(model_path) / "speech_tokenizer" / "model.safetensors"
         )
         if tokenizer_src.exists() and not speech_tokenizer_dst.exists():
-            speech_tokenizer_dst.parent.mkdir(exist_ok=True)
-            shutil.copy(tokenizer_src, speech_tokenizer_dst)
+            try:
+                speech_tokenizer_dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(tokenizer_src, speech_tokenizer_dst)
+            except PermissionError as e:
+                raise RuntimeError(
+                    "Speech tokenizer weights are missing in the model directory, but the app cannot write them. "
+                    "This often happens in Docker when model folders are bind-mounted read-only or owned by a "
+                    "different UID/GID.\n\n"
+                    "Fix: copy the tokenizer weights on the host so the model directory contains:\n"
+                    f"  {speech_tokenizer_dst}\n\n"
+                    "Source tokenizer weights expected at:\n"
+                    f"  {tokenizer_src}\n"
+                ) from e
 
         device = _detect_device()
         attn_impl = _get_attn_implementation(device)
@@ -202,7 +213,7 @@ def get_model(model_name: str):
         for tdtype in preferred_dtypes:
             load_kwargs: dict = {
                 "device_map": device,
-                "torch_dtype": tdtype,
+                "dtype": tdtype,
             }
             if attn_impl is not None:
                 load_kwargs["attn_implementation"] = attn_impl

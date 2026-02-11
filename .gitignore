@@ -90,3 +90,6 @@ README_PODCAST_TESTING.md
 README_USER_ACTION_REQUIRED.md
 TESTING_GUIDE.md
 test_artifacts/
+
+# Docker smoke test output
+_docker_smoke_out/

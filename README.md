@@ -159,7 +159,6 @@ Run container:
 
 ```bash
 docker run --rm -it -p 7860:7860 \
-  --env-file .env \
   -v "$(pwd)/Qwen3-TTS-Tokenizer-12Hz:/app/Qwen3-TTS-Tokenizer-12Hz" \
   -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-CustomVoice:/app/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
   -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-Base:/app/Qwen3-TTS-12Hz-1.7B-Base" \
@@ -171,6 +170,75 @@ Then open `http://127.0.0.1:7860`.
 Notes:
 - `qwen_tts_ui.py` now reads `GRADIO_SERVER_NAME` and `GRADIO_SERVER_PORT`; Docker image sets these to `0.0.0.0:7860`.
 - If you use other model variants (0.6B, VoiceDesign), mount those directories the same way.
+- Podcast features (LLM providers) are optional. If you use the Podcast tab, pass your keys via env vars or `--env-file .env`.
+- The container runs as a non-root user (`appuser`). Ensure your mounted model/tokenizer folders are readable by non-root users.
+  - If you see an error about missing `speech_tokenizer/model.safetensors` and write permission, copy the tokenizer weights into the model folder on the host (or run the container with a user that can write to the bind-mounted model directory).
+- macOS note: Docker containers run Linux, so MPS acceleration is not available inside Docker (CPU only). For best performance on Mac, run natively (non-Docker).
+- If the container exits while loading models, increase Docker Desktop memory allocation and/or use a smaller model (0.6B).
+
+#### Docker Smoke Test (Optional)
+
+This performs an end-to-end TTS run inside Docker and writes a WAV file to the host.
+
+```bash
+mkdir -p _docker_smoke_out
+
+docker run --rm -i -e QWEN_TTS_DEVICE=cpu \
+  -v "$(pwd)/Qwen3-TTS-Tokenizer-12Hz:/app/Qwen3-TTS-Tokenizer-12Hz" \
+  -v "$(pwd)/Qwen3-TTS-12Hz-0.6B-CustomVoice:/app/Qwen3-TTS-12Hz-0.6B-CustomVoice" \
+  -v "$(pwd)/_docker_smoke_out:/out" \
+  qwen3-tts-studio python - <<'PY'
+from pathlib import Path
+import numpy as np
+import soundfile as sf
+
+from audio.generator import generate_dialogue_audio
+from podcast.models import Dialogue, Speaker, SpeakerProfile
+
+out = Path("/out/docker_smoke_ryan.wav")
+
+params = {
+    "model_name": "0.6B-CustomVoice",
+    "temperature": 0.3,
+    "top_k": 50,
+    "top_p": 0.85,
+    "repetition_penalty": 1.0,
+    "max_new_tokens": 1024,
+    "subtalker_temperature": 0.3,
+    "subtalker_top_k": 50,
+    "subtalker_top_p": 0.85,
+    "language": "en",
+    "instruct": None,
+}
+
+profile = SpeakerProfile(
+    speakers=[Speaker(name="Tester", voice_id="ryan", role="Host", type="preset")]
+)
+dialogue = Dialogue(
+    speaker="Tester",
+    text="Hello, this is a Docker smoke test for Qwen three TTS.",
+)
+
+path = generate_dialogue_audio(dialogue, profile, params, out)
+
+audio, sr = sf.read(path, dtype="float32")
+if audio.ndim > 1:
+    audio = audio.mean(axis=1)
+
+dur = len(audio) / sr
+rms = float(np.sqrt(np.mean(audio * audio)))
+peak = float(np.max(np.abs(audio)))
+
+print("WROTE", path)
+print("SR", sr, "DUR_SEC", round(dur, 3), "RMS", round(rms, 6), "PEAK", round(peak, 6))
+assert out.stat().st_size > 44
+assert dur > 0.2
+assert peak > 0.003
+print("SMOKE_OK")
+PY
+```
+
+You should see `SMOKE_OK` and a file at `_docker_smoke_out/docker_smoke_ryan.wav`.
 
 ### Use Prebuilt Image from GHCR
 
@@ -184,7 +252,6 @@ Run the container:
 
 ```bash
 docker run --rm -it -p 7860:7860 \
-  --env-file .env \
   -v "$(pwd)/Qwen3-TTS-Tokenizer-12Hz:/app/Qwen3-TTS-Tokenizer-12Hz" \
   -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-CustomVoice:/app/Qwen3-TTS-12Hz-1.7B-CustomVoice" \
   -v "$(pwd)/Qwen3-TTS-12Hz-1.7B-Base:/app/Qwen3-TTS-12Hz-1.7B-Base" \
@@ -195,7 +262,9 @@ Then open `http://127.0.0.1:7860`.
 
 Notes:
 - Models are mounted at runtime and not bundled in the image. Mount the same directories as shown above.
-- For reproducible deployments, pin a release tag (for example: `ghcr.io/bc-dunia/qwen3-tts-studio:0.1.0`).
+- Podcast features (LLM providers) are optional. If you use the Podcast tab, pass your keys via env vars or `--env-file .env`.
+- On Apple Silicon/ARM64, if you see `no matching manifest for linux/arm64/v8`, use `--platform linux/amd64` in both `docker pull` and `docker run`.
+- For reproducible deployments, pin a release tag (for example: `ghcr.io/bc-dunia/qwen3-tts-studio:0.1.5`).
 - If you use other model variants (0.6B, VoiceDesign), mount those directories the same way.
 
 ### Available Models
