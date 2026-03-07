@@ -445,6 +445,172 @@ def transcript_from_struct(dialogues: list[dict[str, str]]) -> Transcript:
     )
 
 
+def generate_podcast_from_script(
+    dialogues: list[dict[str, str]],
+    voice_selections: list[dict[str, str]],
+    quality_preset: str | dict[str, object] | None = "standard",
+    language: str = "English",
+    title: str = "",
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, str]:
+    """
+    Generate a podcast from a user-provided script (no LLM involved).
+
+    This is the orchestrator entry-point for the "Custom Script" feature.
+    It mirrors the artifact/metadata structure of ``generate_podcast`` so that
+    the result integrates with history, progress UI, and audio output.
+
+    Args:
+        dialogues: Pre-parsed dialogue list from script_parser.
+        voice_selections: List of voice selection dicts.
+        quality_preset: TTS quality preset name or params dict.
+        language: Language name or code.
+        title: Optional episode title for metadata (derived from script if empty).
+        progress_callback: Optional progress callback.
+
+    Returns:
+        Dict with paths to artifacts generated during the workflow.
+    """
+    if not dialogues:
+        raise ValueError("No dialogue lines provided.")
+
+    tts_params = _resolve_tts_params(quality_preset, language)
+    started_at = datetime.now(timezone.utc)
+
+    podcast_dir: Path | None = None
+    try:
+        _notify(progress_callback, "create_directory", {"status": "started"})
+        podcast_name = _timestamped_podcast_name()
+        podcast_dir = storage.create_podcast_directory(podcast_name)
+        _notify(
+            progress_callback,
+            "create_directory",
+            {"status": "completed", "podcast_dir": str(podcast_dir)},
+        )
+
+        # Build transcript from structured dialogues.
+        _notify(progress_callback, "generate_transcript", {"status": "started"})
+        transcript = transcript_from_struct(dialogues)
+        _notify(
+            progress_callback,
+            "generate_transcript",
+            {"status": "completed", "transcript": transcript.model_dump()},
+        )
+
+        # Save transcript artifact.
+        _notify(progress_callback, "save_artifacts", {"status": "started"})
+        transcript_path = storage.save_transcript(transcript, podcast_dir)
+        _notify(
+            progress_callback,
+            "save_artifacts",
+            {"status": "completed", "transcript_path": str(transcript_path)},
+        )
+
+        # Create speaker profile and generate audio.
+        speaker_profile = voice_selection.create_speaker_profile(voice_selections)
+
+        clips_dir = podcast_dir / "clips"
+        clips_dir.mkdir(parents=True, exist_ok=True)
+
+        _notify(progress_callback, "generate_clips", {"status": "started"})
+
+        def clip_progress(
+            current: int,
+            total: int,
+            segment_info: dict[str, object],
+        ) -> None:
+            clip_status = (
+                "clip_started"
+                if segment_info.get("status") == "started"
+                else "progress"
+            )
+            _notify(
+                progress_callback,
+                "generate_clips",
+                {
+                    "status": clip_status,
+                    "current": current,
+                    "total": total,
+                    "segment": segment_info,
+                },
+            )
+
+        clip_paths = batch_processor.generate_all_clips(
+            transcript=transcript,
+            speaker_profile=speaker_profile,
+            params=cast(dict[str, object], tts_params),
+            clips_dir=clips_dir,
+            progress_callback=clip_progress,
+        )
+        _notify(
+            progress_callback,
+            "generate_clips",
+            {"status": "completed", "clip_count": len(clip_paths)},
+        )
+
+        _notify(progress_callback, "combine_audio", {"status": "started"})
+        combined_audio_path = audio_combiner.combine_audio_clips(
+            clips_dir=clips_dir,
+            output_path=podcast_dir / "final_podcast.mp3",
+        )
+        _notify(
+            progress_callback,
+            "combine_audio",
+            {"status": "completed", "output_path": str(combined_audio_path)},
+        )
+
+        # Save metadata.
+        _notify(progress_callback, "save_metadata", {"status": "started"})
+        finished_at = datetime.now(timezone.utc)
+
+        # Derive title from first dialogue if not provided.
+        if not title:
+            first_text = dialogues[0].get("text", "")
+            title = (first_text[:60] + "...") if len(first_text) > 60 else first_text
+            if not title:
+                title = "Custom Script Podcast"
+
+        speakers_in_script = list(dict.fromkeys(
+            dlg.get("speaker", "") for dlg in dialogues
+        ))
+
+        metadata = {
+            "topic": title,
+            "mode": "custom_script",
+            "language": language,
+            "speakers": [s.model_dump() for s in speaker_profile.speakers],
+            "speakers_in_script": speakers_in_script,
+            "tts_params": tts_params,
+            "quality_preset": quality_preset,
+            "dialogue_count": len(dialogues),
+            "created_at": started_at.isoformat(),
+            "completed_at": finished_at.isoformat(),
+        }
+        metadata_path = podcast_dir / "metadata.json"
+        _ = metadata_path.write_text(json.dumps(metadata, indent=2))
+        _notify(
+            progress_callback,
+            "save_metadata",
+            {"status": "completed", "metadata_path": str(metadata_path)},
+        )
+
+        return {
+            "podcast_dir": str(podcast_dir),
+            "transcript_path": str(transcript_path),
+            "clips_dir": str(clips_dir),
+            "combined_audio_path": str(combined_audio_path),
+            "metadata_path": str(metadata_path),
+        }
+    except Exception as exc:
+        _notify(
+            progress_callback,
+            "error",
+            {"status": "failed", "error": str(exc)},
+        )
+        if podcast_dir is not None and podcast_dir.exists():
+            shutil.rmtree(podcast_dir, ignore_errors=True)
+        raise
+
 if __name__ == "__main__":
     def mock_progress(step: str, detail: dict[str, object] | None) -> None:
         print(f"[{step}] {detail}")

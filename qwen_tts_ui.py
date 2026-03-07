@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from podcast import orchestrator as podcast_orchestrator
+from podcast.script_parser import parse_script
 from ui.content_input import (
     get_content_components,
     update_topic_char_count,
@@ -752,6 +753,39 @@ def format_duration(seconds):
         return f"{mins}:{secs:02d}"
     return f"{seconds:.1f}s"
 
+
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as human-readable string for podcast progress."""
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    hours = int(seconds // 3600)
+    mins = int((seconds % 3600) // 60)
+    return f"{hours}h {mins}m"
+
+
+def _render_podcast_transcript_html(transcript_data: dict) -> str:
+    """Render transcript data as styled HTML for podcast preview."""
+    dialogues = transcript_data.get("dialogues", [])
+    if not dialogues:
+        return '<div class="empty-state">No dialogues</div>'
+    html_parts = []
+    for dlg in dialogues[:20]:
+        speaker = html_escape.escape(dlg.get("speaker", "Speaker"))
+        text = html_escape.escape(dlg.get("text", ""))
+        html_parts.append(
+            f'<div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;">'
+            f"<strong>{speaker}:</strong> {text}"
+            f"</div>"
+        )
+    if len(dialogues) > 20:
+        html_parts.append(
+            f'<div style="color: #666; text-align: center;">... and {len(dialogues) - 20} more lines</div>'
+        )
+    return "".join(html_parts)
 
 def save_to_history(
     audio_path, text, voice_info, tab_type, gen_time=None, model_name=None, params=None
@@ -4616,165 +4650,246 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
 
                     with gr.Row():
                         with gr.Column(scale=1):
-                            gr.HTML('<div class="section-header">Topic & Style</div>')
-
-                            podcast_topic = gr.Textbox(
-                                label="Podcast Topic",
-                                placeholder="Enter your podcast topic or main subject...\n\nExample: The future of artificial intelligence",
-                                lines=3,
-                                max_lines=3,
-                                info="Required. What is your podcast about?",
-                            )
-                            podcast_topic_chars = gr.HTML(
-                                value=update_topic_char_count("")
-                            )
-
-                            podcast_key_points = gr.Textbox(
-                                label="Key Points (Optional)",
-                                placeholder="List the main points you want to cover...\n\n- Point 1\n- Point 2\n- Point 3",
-                                lines=4,
-                                info="Bullet points or key topics to discuss",
-                            )
-
-                            podcast_briefing = gr.Textbox(
-                                label="Style & Tone (Optional)",
-                                placeholder="Describe the desired style and tone...\n\nExample: Conversational and engaging",
-                                lines=2,
-                                info="How should the podcast sound?",
-                            )
-
-                            with gr.Row():
-                                podcast_quality_preset = gr.Dropdown(
-                                    choices=list(PODCAST_QUALITY_PRESETS.keys()),
-                                    value="standard",
-                                    label="Quality",
-                                    info="Select quality level",
-                                    scale=1,
-                                )
-                                podcast_num_segments = gr.Slider(
-                                    minimum=2,
-                                    maximum=8,
-                                    value=4,
-                                    step=1,
-                                    label="Segments",
-                                    info="Outline segments",
-                                    scale=1,
-                                )
-
-                            podcast_language = gr.Dropdown(
-                                label="Language",
-                                choices=[
-                                    "English",
-                                    "Korean",
-                                    "Chinese",
-                                    "Japanese",
-                                    "Spanish",
-                                    "French",
-                                    "German",
-                                ],
-                                value="English",
-                                info="Language for script generation and voice synthesis",
-                            )
-                            with gr.Accordion("LLM Provider", open=False):
-                                podcast_llm_provider = gr.Dropdown(
-                                    choices=[
-                                        "OpenAI",
-                                        "Ollama",
-                                        "OpenRouter",
-                                        "Claude",
-                                    ],
-                                    value="Ollama",
-                                    label="Provider",
-                                    info="LLM service for script generation",
-                                )
-                                podcast_llm_model = gr.Dropdown(
-                                    label="Model",
-                                    choices=PROVIDER_MODEL_OPTIONS[LLMProvider.OLLAMA],
-                                    value=DEFAULT_MODELS[LLMProvider.OLLAMA],
-                                    info="Model to use for generation (leave empty for default)",
-                                    allow_custom_value=True,
-                                )
-                                podcast_llm_api_key = gr.Textbox(
-                                    label="API Key",
-                                    value="",
-                                    placeholder="Not required for Ollama",
-                                    type="password",
-                                    visible=True,
-                                    info="API key (not needed for Ollama)",
-                                )
-                                podcast_llm_base_url = gr.Textbox(
-                                    label="Base URL",
-                                    value="http://localhost:11434/v1",
-                                    placeholder="Custom API endpoint",
-                                    info="API endpoint URL",
-                                )
-                                podcast_llm_status = gr.HTML(value="")
-                                podcast_llm_test_btn = gr.Button(
-                                    "Test Connection", size="sm"
-                                )
-
-                            with gr.Row():
-                                gr.HTML(
-                                    '<div class="section-header" style="margin-top:1rem;">Speakers (1-4)</div>'
-                                )
-                                podcast_refresh_voices_btn = gr.Button(
-                                    "🔄 Refresh", size="sm", scale=0, min_width=80
-                                )
-
-                            podcast_voice_summary = gr.HTML(
-                                value='<div style="color:#888; font-size:0.9em;">Select 1-4 speakers below</div>'
-                            )
-
-                            podcast_speaker_slots = []
-                            podcast_preview_buttons = []
-                            _slot_roles = ["Host", "Guest", "Guest", "Guest"]
-                            _initial_voice_choices = (
-                                _get_podcast_voice_choices()
-                            )  # Cache once
-                            for i in range(4):
-                                with gr.Row():
-                                    slot_role = gr.Dropdown(
-                                        choices=ROLES,
-                                        value=_slot_roles[i],
-                                        label=f"Speaker {i + 1}",
-                                        scale=1,
-                                        min_width=100,
-                                        interactive=True,
-                                    )
-                                    slot_voice = gr.Dropdown(
-                                        choices=_initial_voice_choices,
-                                        value="",
-                                        label="Voice",
-                                        scale=2,
-                                        min_width=150,
-                                        interactive=True,
-                                        allow_custom_value=False,
-                                    )
-                                    slot_preview = gr.Button(
-                                        "▶",
-                                        size="sm",
-                                        scale=0,
-                                        min_width=40,
-                                    )
-                                    podcast_preview_buttons.append(slot_preview)
-                                    podcast_speaker_slots.append(
-                                        (slot_role, slot_voice)
+                            with gr.Tabs():
+                                with gr.TabItem("AI Generated"):
+                                    gr.HTML(
+                                        '<div class="section-header">Topic & Style</div>'
                                     )
 
-                            podcast_preview_audio = gr.Audio(
-                                label="Preview",
-                                visible=True,
-                                interactive=False,
-                            )
+                                    podcast_topic = gr.Textbox(
+                                        label="Podcast Topic",
+                                        placeholder="Enter your podcast topic or main subject...\n\nExample: The future of artificial intelligence",
+                                        lines=3,
+                                        max_lines=3,
+                                        info="Required. What is your podcast about?",
+                                    )
+                                    podcast_topic_chars = gr.HTML(
+                                        value=update_topic_char_count("")
+                                    )
 
-                            podcast_voice_status = gr.HTML(value="")
+                                    podcast_key_points = gr.Textbox(
+                                        label="Key Points (Optional)",
+                                        placeholder="List the main points you want to cover...\n\n- Point 1\n- Point 2\n- Point 3",
+                                        lines=4,
+                                        info="Bullet points or key topics to discuss",
+                                    )
 
-                            podcast_generate_btn = gr.Button(
-                                "Generate Podcast",
-                                variant="primary",
-                                elem_classes=["generate-btn"],
-                                size="lg",
-                            )
+                                    podcast_briefing = gr.Textbox(
+                                        label="Style & Tone (Optional)",
+                                        placeholder="Describe the desired style and tone...\n\nExample: Conversational and engaging",
+                                        lines=2,
+                                        info="How should the podcast sound?",
+                                    )
+
+                                    with gr.Row():
+                                        podcast_quality_preset = gr.Dropdown(
+                                            choices=list(
+                                                PODCAST_QUALITY_PRESETS.keys()
+                                            ),
+                                            value="standard",
+                                            label="Quality",
+                                            info="Select quality level",
+                                            scale=1,
+                                        )
+                                        podcast_num_segments = gr.Slider(
+                                            minimum=2,
+                                            maximum=8,
+                                            value=4,
+                                            step=1,
+                                            label="Segments",
+                                            info="Outline segments",
+                                            scale=1,
+                                        )
+
+                                    podcast_language = gr.Dropdown(
+                                        label="Language",
+                                        choices=[
+                                            "English",
+                                            "Korean",
+                                            "Chinese",
+                                            "Japanese",
+                                            "Spanish",
+                                            "French",
+                                            "German",
+                                        ],
+                                        value="English",
+                                        info="Language for script generation and voice synthesis",
+                                    )
+                                    with gr.Accordion("LLM Provider", open=False):
+                                        podcast_llm_provider = gr.Dropdown(
+                                            choices=[
+                                                "OpenAI",
+                                                "Ollama",
+                                                "OpenRouter",
+                                                "Claude",
+                                            ],
+                                            value="Ollama",
+                                            label="Provider",
+                                            info="LLM service for script generation",
+                                        )
+                                        podcast_llm_model = gr.Dropdown(
+                                            label="Model",
+                                            choices=PROVIDER_MODEL_OPTIONS[
+                                                LLMProvider.OLLAMA
+                                            ],
+                                            value=DEFAULT_MODELS[LLMProvider.OLLAMA],
+                                            info="Model to use for generation (leave empty for default)",
+                                            allow_custom_value=True,
+                                        )
+                                        podcast_llm_api_key = gr.Textbox(
+                                            label="API Key",
+                                            value="",
+                                            placeholder="Not required for Ollama",
+                                            type="password",
+                                            visible=True,
+                                            info="API key (not needed for Ollama)",
+                                        )
+                                        podcast_llm_base_url = gr.Textbox(
+                                            label="Base URL",
+                                            value="http://localhost:11434/v1",
+                                            placeholder="Custom API endpoint",
+                                            info="API endpoint URL",
+                                        )
+                                        podcast_llm_status = gr.HTML(value="")
+                                        podcast_llm_test_btn = gr.Button(
+                                            "Test Connection", size="sm"
+                                        )
+
+                                    with gr.Row():
+                                        gr.HTML(
+                                            '<div class="section-header" style="margin-top:1rem;">Speakers (1-4)</div>'
+                                        )
+                                        podcast_refresh_voices_btn = gr.Button(
+                                            "🔄 Refresh",
+                                            size="sm",
+                                            scale=0,
+                                            min_width=80,
+                                        )
+
+                                    podcast_voice_summary = gr.HTML(
+                                        value='<div style="color:#888; font-size:0.9em;">Select 1-4 speakers below</div>'
+                                    )
+
+                                    podcast_speaker_slots = []
+                                    podcast_preview_buttons = []
+                                    _slot_roles = ["Host", "Guest", "Guest", "Guest"]
+                                    _initial_voice_choices = (
+                                        _get_podcast_voice_choices()
+                                    )  # Cache once
+                                    for i in range(4):
+                                        with gr.Row():
+                                            slot_role = gr.Dropdown(
+                                                choices=ROLES,
+                                                value=_slot_roles[i],
+                                                label=f"Speaker {i + 1}",
+                                                scale=1,
+                                                min_width=100,
+                                                interactive=True,
+                                            )
+                                            slot_voice = gr.Dropdown(
+                                                choices=_initial_voice_choices,
+                                                value="",
+                                                label="Voice",
+                                                scale=2,
+                                                min_width=150,
+                                                interactive=True,
+                                                allow_custom_value=False,
+                                            )
+                                            slot_preview = gr.Button(
+                                                "▶",
+                                                size="sm",
+                                                scale=0,
+                                                min_width=40,
+                                            )
+                                            podcast_preview_buttons.append(slot_preview)
+                                            podcast_speaker_slots.append(
+                                                (slot_role, slot_voice)
+                                            )
+
+                                    podcast_preview_audio = gr.Audio(
+                                        label="Preview",
+                                        visible=True,
+                                        interactive=False,
+                                    )
+
+                                    podcast_voice_status = gr.HTML(value="")
+
+                                    podcast_generate_btn = gr.Button(
+                                        "Generate Podcast",
+                                        variant="primary",
+                                        elem_classes=["generate-btn"],
+                                        size="lg",
+                                    )
+
+                                with gr.TabItem("Custom Script"):
+                                    gr.HTML(
+                                        '<div class="section-header">Paste Your Script</div>'
+                                    )
+                                    custom_script_input = gr.Textbox(
+                                        label="Script",
+                                        placeholder="Speaker One: Welcome to the show!\nSpeaker Two: Thanks for having me.\nSpeaker One: Let's dive in.",
+                                        lines=12,
+                                        info="Use 'Speaker Name: dialogue text' format",
+                                    )
+                                    custom_script_parse_btn = gr.Button(
+                                        "Parse Script", size="sm"
+                                    )
+                                    custom_script_status = gr.HTML(value="")
+                                    custom_script_parsed_state = gr.State(None)
+
+                                    custom_speaker_slots = []
+                                    for i in range(4):
+                                        with gr.Row(visible=False) as csr:
+                                            csn = gr.Textbox(
+                                                label=f"Speaker {i + 1}",
+                                                interactive=False,
+                                                scale=1,
+                                            )
+                                            csr_role = gr.Dropdown(
+                                                choices=ROLES,
+                                                value="Host" if i == 0 else "Guest",
+                                                label="Role",
+                                                scale=1,
+                                            )
+                                            csv = gr.Dropdown(
+                                                choices=_initial_voice_choices,
+                                                value="",
+                                                label="Voice",
+                                                scale=2,
+                                            )
+                                        custom_speaker_slots.append(
+                                            (csr, csn, csr_role, csv)
+                                        )
+
+                                    custom_episode_title = gr.Textbox(
+                                        label="Episode Title (Optional)",
+                                        placeholder="Leave blank to auto-generate from script",
+                                        lines=1,
+                                    )
+                                    custom_quality_preset = gr.Dropdown(
+                                        choices=list(PODCAST_QUALITY_PRESETS.keys()),
+                                        value="standard",
+                                        label="Quality",
+                                    )
+                                    custom_language = gr.Dropdown(
+                                        label="Language",
+                                        choices=[
+                                            "English",
+                                            "Korean",
+                                            "Chinese",
+                                            "Japanese",
+                                            "Spanish",
+                                            "French",
+                                            "German",
+                                        ],
+                                        value="English",
+                                    )
+                                    custom_generate_btn = gr.Button(
+                                        "Generate from Script",
+                                        variant="primary",
+                                        elem_classes=["generate-btn"],
+                                        size="lg",
+                                    )
 
                         with gr.Column(scale=2):
                             gr.HTML('<div class="section-header">Progress</div>')
@@ -5368,25 +5483,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 )
                             return "".join(html_parts)
 
-                        def render_transcript_html(transcript_data: dict) -> str:
-                            dialogues = transcript_data.get("dialogues", [])
-                            if not dialogues:
-                                return '<div class="empty-state">No dialogues</div>'
-                            html_parts = []
-                            for dlg in dialogues[:20]:
-                                speaker = dlg.get("speaker", "Speaker")
-                                text = dlg.get("text", "")
-                                html_parts.append(
-                                    f'<div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;">'
-                                    f"<strong>{speaker}:</strong> {text}"
-                                    f"</div>"
-                                )
-                            if len(dialogues) > 20:
-                                html_parts.append(
-                                    f'<div style="color: #666; text-align: center;">... and {len(dialogues) - 20} more lines</div>'
-                                )
-                            return "".join(html_parts)
-
                         yield (
                             create_step_indicator_html(GenerationStep.OUTLINE, 0.0),
                             0,
@@ -5404,18 +5500,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             gr.update(visible=False),
                         )
 
-                        def format_duration(seconds: float) -> str:
-                            if seconds < 60:
-                                return f"{int(seconds)}s"
-                            elif seconds < 3600:
-                                mins = int(seconds // 60)
-                                secs = int(seconds % 60)
-                                return f"{mins}m {secs}s"
-                            else:
-                                hours = int(seconds // 3600)
-                                mins = int((seconds % 3600) // 60)
-                                return f"{hours}h {mins}m"
-
                         def get_eta_string() -> str:
                             with eta_lock:
                                 if len(clip_durations) < 2 or total_clips == 0:
@@ -5428,7 +5512,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 if remaining <= 0:
                                     return ""
                                 eta_seconds = avg_clip_time * remaining
-                            return f"~{format_duration(eta_seconds)} remaining"
+                            return f"~{_format_elapsed(eta_seconds)} remaining"
 
                         try:
                             while True:
@@ -5439,7 +5523,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                     if (now - last_yield_time) >= 1.5:
                                         elapsed = now - generation_started
                                         elapsed_str = (
-                                            f"Elapsed: {format_duration(elapsed)}"
+                                            f"Elapsed: {_format_elapsed(elapsed)}"
                                         )
                                         eta_str = get_eta_string()
                                         time_info = f"{elapsed_str}  {eta_str}".strip()
@@ -5481,13 +5565,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                                 item.data["outline"]
                                             )
                                         if "transcript" in item.data:
-                                            transcript_html = render_transcript_html(
-                                                item.data["transcript"]
-                                            )
+                                            transcript_html = _render_podcast_transcript_html(item.data["transcript"])
 
                                     now = time.monotonic()
                                     elapsed = now - generation_started
-                                    elapsed_str = f"Elapsed: {format_duration(elapsed)}"
+                                    elapsed_str = f"Elapsed: {_format_elapsed(elapsed)}"
                                     eta_str = get_eta_string()
                                     time_info = f"{elapsed_str}  {eta_str}".strip()
 
@@ -5544,9 +5626,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                         with open(transcript_path) as f:
                                             transcript_data = json.load(f)
                                         if "empty-state" in transcript_html:
-                                            transcript_html = render_transcript_html(
-                                                transcript_data
-                                            )
+                                            transcript_html = _render_podcast_transcript_html(transcript_data)
                                         dialogues = transcript_data.get("dialogues", [])
                                         editor_rows = [
                                             [
@@ -5885,6 +5965,470 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 ),
                             )
 
+                    def parse_custom_script(script_text):
+                        result = parse_script(script_text)
+
+                        outputs = []
+
+                        if not result.ok:
+                            error_html = f'<div style="color: #dc3545;">{"; ".join(result.errors)}</div>'
+                            outputs.append(error_html)
+                            outputs.append(None)
+                            for _ in range(4):
+                                outputs.append(gr.update(visible=False))
+                                outputs.append("")
+                                outputs.append(gr.update())
+                            return tuple(outputs)
+
+                        speakers = result.speakers
+                        count = len(speakers)
+                        status_html = (
+                            f'<div style="color: #28a745;">Found {count} speaker'
+                            f"{'s' if count != 1 else ''}: {', '.join(speakers)} "
+                            f"({len(result.dialogues)} dialogue lines)</div>"
+                        )
+
+                        outputs.append(status_html)
+                        outputs.append(result)
+
+                        for i in range(4):
+                            if i < count:
+                                outputs.append(gr.update(visible=True))
+                                outputs.append(speakers[i])
+                                outputs.append(
+                                    gr.update(value="Host" if i == 0 else "Guest")
+                                )
+                            else:
+                                outputs.append(gr.update(visible=False))
+                                outputs.append("")
+                                outputs.append(gr.update())
+
+                        return tuple(outputs)
+
+                    def on_custom_script_change():
+                        outputs = [
+                            '<div style="color: #888; font-size: 0.9em;">Click "Parse Script" to detect speakers</div>',
+                            None,
+                        ]
+                        for _ in range(4):
+                            outputs.append(gr.update(visible=False))
+                            outputs.append("")
+                            outputs.append(gr.update())
+                        return tuple(outputs)
+
+                    def run_custom_script_generation(
+                        script_text,
+                        parsed_state,
+                        quality_preset,
+                        language,
+                        episode_title,
+                        *custom_slot_values,
+                    ):
+                        outline_html = '<div class="empty-state">Custom script mode — no outline</div>'
+                        transcript_html = (
+                            '<div class="empty-state">Waiting for transcript...</div>'
+                        )
+
+                        def error_tuple(message: str, detail: str = ""):
+                            return (
+                                create_step_indicator_html(
+                                    GenerationStep.TRANSCRIPT, 0.0
+                                ),
+                                0,
+                                f"Error: {message}",
+                                "",
+                                f'<div style="color: #dc3545;">{detail or message}</div>',
+                                None,
+                                outline_html,
+                                transcript_html,
+                                gr.update(visible=False),
+                                gr.update(
+                                    value="Generate from Script", interactive=True
+                                ),
+                                None,
+                                gr.update(),
+                                gr.update(value=[]),
+                                gr.update(visible=False),
+                                gr.update(),
+                            )
+
+                        if parsed_state is None or not getattr(parsed_state, "ok", False):
+                            yield error_tuple(
+                                "Script not parsed",
+                                'Click "Parse Script" first to detect speakers and assign voices.',
+                            )
+                            return
+
+                        result = parse_script(script_text)
+                        if not result.ok:
+                            yield error_tuple(
+                                "Invalid script", "; ".join(result.errors)
+                            )
+                            return
+
+                        if parsed_state is not None and getattr(
+                            parsed_state, "ok", False
+                        ):
+                            if parsed_state.speakers != result.speakers:
+                                yield error_tuple(
+                                    "Script changed since parsing",
+                                    "Click Parse Script again to refresh speaker assignments.",
+                                )
+                                return
+
+                        voice_sels = []
+                        for i in range(len(result.speakers)):
+                            name = custom_slot_values[i * 3]
+                            role = custom_slot_values[i * 3 + 1]
+                            voice_val = custom_slot_values[i * 3 + 2]
+                            if not voice_val:
+                                yield error_tuple(
+                                    f"Missing voice for speaker {i + 1}",
+                                    f"Select a voice for '{name}' before generating.",
+                                )
+                                return
+                            parts = voice_val.split(":", 1)
+                            if len(parts) != 2:
+                                yield error_tuple(
+                                    f"Invalid voice selection for {name}",
+                                    "Choose a preset or saved voice from the dropdown.",
+                                )
+                                return
+                            vtype, vid = parts
+                            if vtype not in {"preset", "saved"} or not vid:
+                                yield error_tuple(
+                                    f"Invalid voice selection for {name}",
+                                    "Choose a preset or saved voice from the dropdown.",
+                                )
+                                return
+                            voice_sels.append(
+                                {
+                                    "voice_id": vid,
+                                    "name": name,
+                                    "role": role,
+                                    "type": vtype,
+                                }
+                            )
+
+                        q: queue.Queue[_ProgressEvent | _DoneEvent | _ErrorEvent] = (
+                            queue.Queue(maxsize=500)
+                        )
+                        cancel_event = threading.Event()
+
+                        current_step = GenerationStep.TRANSCRIPT
+                        step_progress = 0.0
+                        status_text = "Starting..."
+
+                        generation_started = time.monotonic()
+
+                        def progress_callback(
+                            step_name: str, detail: dict[str, Any] | None
+                        ):
+                            if cancel_event.is_set():
+                                return
+
+                            detail = detail or {}
+                            status = detail.get("status", "")
+                            step = GenerationStep.TRANSCRIPT
+                            progress = 0.0
+                            status_msg = ""
+                            event_data = None
+
+                            if step_name in {
+                                "create_directory",
+                                "generate_transcript",
+                                "save_artifacts",
+                            }:
+                                step = GenerationStep.TRANSCRIPT
+                                if step_name == "create_directory":
+                                    progress = 0.2 if status == "completed" else 0.05
+                                    status_msg = "Preparing podcast workspace..."
+                                elif step_name == "generate_transcript":
+                                    progress = 1.0 if status == "completed" else 0.6
+                                    status_msg = (
+                                        "Building transcript from script..."
+                                        if status == "started"
+                                        else "Transcript ready"
+                                    )
+                                    if detail.get("transcript"):
+                                        event_data = {
+                                            "transcript": detail["transcript"]
+                                        }
+                                else:
+                                    progress = 1.0
+                                    status_msg = "Transcript saved"
+                            elif step_name == "generate_clips":
+                                step = GenerationStep.AUDIO
+                                current = detail.get("current", 0)
+                                total = detail.get("total", 1)
+                                segment = detail.get("segment", {})
+                                speaker = segment.get("speaker", "")
+
+                                if status == "clip_started":
+                                    progress = (
+                                        max(0.0, (current - 1) / total)
+                                        if total > 0
+                                        else 0.0
+                                    )
+                                    status_msg = f"Working on clip {current}/{total}: {speaker}..."
+                                elif status == "progress":
+                                    progress = (
+                                        min(1.0, max(0.0, current / total))
+                                        if total > 0
+                                        else 0.0
+                                    )
+                                    clip_status = segment.get("status", "")
+                                    if clip_status == "success":
+                                        status_msg = f"Completed clip {current}/{total}"
+                                    elif clip_status == "error":
+                                        status_msg = f"Clip {current}/{total} failed, continuing..."
+                                    else:
+                                        status_msg = (
+                                            f"Generating audio: {current}/{total} clips"
+                                        )
+                                elif status == "completed":
+                                    progress = 1.0
+                                    status_msg = "Audio generation complete"
+                                else:
+                                    progress = 0.0
+                                    status_msg = "Starting audio generation..."
+                            elif step_name in {"combine_audio", "save_metadata"}:
+                                step = GenerationStep.COMBINE
+                                progress = 1.0 if status == "completed" else 0.5
+                                status_msg = (
+                                    "Combining audio..."
+                                    if step_name == "combine_audio"
+                                    else "Saving metadata..."
+                                )
+
+                            evt = _ProgressEvent(
+                                step=step,
+                                progress=progress,
+                                status=status_msg,
+                                detail=str(detail),
+                                data=event_data,
+                            )
+                            try:
+                                q.put_nowait(evt)
+                            except queue.Full:
+                                try:
+                                    q.get_nowait()
+                                    q.put_nowait(evt)
+                                except (queue.Empty, queue.Full):
+                                    pass
+
+                        def worker():
+                            try:
+                                result_data = (
+                                    podcast_orchestrator.generate_podcast_from_script(
+                                        dialogues=result.dialogues,
+                                        voice_selections=voice_sels,
+                                        quality_preset=quality_preset,
+                                        language=language,
+                                        title=episode_title,
+                                        progress_callback=progress_callback,
+                                    )
+                                )
+                                try:
+                                    q.put_nowait(_DoneEvent(result=result_data))
+                                except queue.Full:
+                                    try:
+                                        q.get_nowait()
+                                        q.put_nowait(_DoneEvent(result=result_data))
+                                    except (queue.Empty, queue.Full):
+                                        pass
+                            except Exception as e:
+                                if cancel_event.is_set():
+                                    return
+                                err_evt = _ErrorEvent(
+                                    error=format_user_error(e),
+                                    tb=traceback.format_exc(),
+                                )
+                                try:
+                                    q.put_nowait(err_evt)
+                                except queue.Full:
+                                    try:
+                                        q.get_nowait()
+                                        q.put_nowait(err_evt)
+                                    except (queue.Empty, queue.Full):
+                                        pass
+
+                        worker_thread = threading.Thread(target=worker, daemon=True)
+                        worker_thread.start()
+
+                        yield (
+                            create_step_indicator_html(GenerationStep.TRANSCRIPT, 0.0),
+                            0,
+                            "Starting custom script generation...",
+                            "",
+                            "",
+                            None,
+                            outline_html,
+                            transcript_html,
+                            gr.update(visible=False),
+                            gr.update(value="⏳ Generating...", interactive=False),
+                            gr.update(),
+                            gr.update(),
+                            gr.update(),
+                            gr.update(visible=False),
+                            gr.update(),
+                        )
+
+                        try:
+                            while True:
+                                try:
+                                    item = q.get(timeout=0.5)
+                                except queue.Empty:
+                                    elapsed = time.monotonic() - generation_started
+                                    yield (
+                                        create_step_indicator_html(
+                                            current_step, step_progress
+                                        ),
+                                        calculate_overall_progress(
+                                            current_step, step_progress
+                                        ),
+                                        status_text,
+                                        f"Elapsed: {_format_elapsed(elapsed)}",
+                                        "",
+                                        None,
+                                        outline_html,
+                                        transcript_html,
+                                        gr.update(visible=False),
+                                        gr.update(
+                                            value="⏳ Generating...", interactive=False
+                                        ),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                    )
+                                    continue
+
+                                if isinstance(item, _ProgressEvent):
+                                    current_step = item.step
+                                    step_progress = item.progress
+                                    status_text = item.status
+
+                                    if item.data and "transcript" in item.data:
+                                        transcript_html = _render_podcast_transcript_html(item.data["transcript"])
+
+                                    elapsed = time.monotonic() - generation_started
+                                    yield (
+                                        create_step_indicator_html(
+                                            current_step, step_progress
+                                        ),
+                                        calculate_overall_progress(
+                                            current_step, step_progress
+                                        ),
+                                        status_text,
+                                        f"Elapsed: {_format_elapsed(elapsed)}",
+                                        "",
+                                        None,
+                                        outline_html,
+                                        transcript_html,
+                                        gr.update(visible=False),
+                                        gr.update(
+                                            value="⏳ Generating...", interactive=False
+                                        ),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                        gr.update(),
+                                    )
+                                    continue
+
+                                if isinstance(item, _DoneEvent):
+                                    result_data = item.result
+                                    combined_audio_path = result_data.get(
+                                        "combined_audio_path"
+                                    )
+                                    transcript_path = result_data.get("transcript_path")
+                                    podcast_dir = result_data.get("podcast_dir")
+
+                                    transcript_data = None
+                                    editor_rows = []
+                                    if (
+                                        transcript_path
+                                        and Path(transcript_path).exists()
+                                    ):
+                                        with open(transcript_path) as f:
+                                            transcript_data = json.load(f)
+                                        transcript_html = _render_podcast_transcript_html(transcript_data)
+                                        dialogues = transcript_data.get("dialogues", [])
+                                        editor_rows = [
+                                            [
+                                                dlg.get("speaker", ""),
+                                                dlg.get("text", ""),
+                                            ]
+                                            for dlg in dialogues
+                                        ]
+
+                                    session_info = {
+                                        "podcast_dir": podcast_dir,
+                                        "quality_preset": quality_preset,
+                                        "language": language,
+                                    }
+
+                                    yield (
+                                        create_step_indicator_html(
+                                            GenerationStep.COMBINE, 1.0
+                                        ),
+                                        100,
+                                        "Podcast generated successfully!",
+                                        "",
+                                        '<div style="color: #28a745;">Generation complete!</div>',
+                                        combined_audio_path,
+                                        outline_html,
+                                        transcript_html,
+                                        gr.update(
+                                            value=combined_audio_path, visible=True
+                                        )
+                                        if combined_audio_path
+                                        else gr.update(visible=False),
+                                        gr.update(
+                                            value="Generate from Script",
+                                            interactive=True,
+                                        ),
+                                        transcript_data,
+                                        session_info,
+                                        gr.update(value=editor_rows),
+                                        gr.update(visible=True),
+                                        voice_sels,
+                                    )
+                                    return
+
+                                if isinstance(item, _ErrorEvent):
+                                    print(f"[Podcast Error] {item.error}\n{item.tb}")
+                                    yield (
+                                        create_step_indicator_html(
+                                            current_step, step_progress
+                                        ),
+                                        calculate_overall_progress(
+                                            current_step, step_progress
+                                        ),
+                                        f"Error: {item.error}",
+                                        "",
+                                        f'<div style="color: #dc3545;">Generation failed: {item.error}</div>',
+                                        None,
+                                        outline_html,
+                                        transcript_html,
+                                        gr.update(visible=False),
+                                        gr.update(
+                                            value="Generate from Script",
+                                            interactive=True,
+                                        ),
+                                        None,
+                                        gr.update(),
+                                        gr.update(value=[]),
+                                        gr.update(visible=False),
+                                        gr.update(),
+                                    )
+                                    return
+                        finally:
+                            cancel_event.set()
+
                     podcast_topic.change(
                         fn=update_topic_char_count,
                         inputs=[podcast_topic],
@@ -5989,6 +6533,63 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                         ],
                         concurrency_limit=1,
                         concurrency_id="podcast_regeneration",
+                    )
+
+                    custom_script_parse_btn.click(
+                        fn=parse_custom_script,
+                        inputs=[custom_script_input],
+                        outputs=[custom_script_status, custom_script_parsed_state]
+                        + [
+                            item
+                            for slot in custom_speaker_slots
+                            for item in (slot[0], slot[1], slot[2])
+                        ],
+                    )
+
+                    custom_script_input.change(
+                        fn=on_custom_script_change,
+                        inputs=[],
+                        outputs=[custom_script_status, custom_script_parsed_state]
+                        + [
+                            item
+                            for slot in custom_speaker_slots
+                            for item in (slot[0], slot[1], slot[2])
+                        ],
+                    )
+
+                    custom_slot_inputs = []
+                    for _, csn, csr_role, csv in custom_speaker_slots:
+                        custom_slot_inputs.extend([csn, csr_role, csv])
+
+                    custom_generate_btn.click(
+                        fn=run_custom_script_generation,
+                        inputs=[
+                            custom_script_input,
+                            custom_script_parsed_state,
+                            custom_quality_preset,
+                            custom_language,
+                            custom_episode_title,
+                        ]
+                        + custom_slot_inputs,
+                        outputs=[
+                            podcast_step_indicator,
+                            podcast_overall_progress,
+                            podcast_status,
+                            podcast_time_remaining,
+                            podcast_error_display,
+                            podcast_final_audio,
+                            podcast_outline_html,
+                            podcast_transcript_html,
+                            podcast_download,
+                            custom_generate_btn,
+                            podcast_transcript_state,
+                            podcast_session_state,
+                            podcast_transcript_editor,
+                            podcast_edit_accordion,
+                            podcast_voice_selections_state,
+                        ],
+                        concurrency_limit=1,
+                        concurrency_id="podcast_generation",
                     )
 
                     for i, preview_btn in enumerate(podcast_preview_buttons):
