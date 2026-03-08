@@ -1399,7 +1399,27 @@ def get_saved_voices():
 
 
 def get_saved_voice_choices():
-    return [v["id"] for v in get_saved_voices()]
+    voices = get_saved_voices()
+    choices = []
+    for v in voices:
+        vid = v["id"]
+        name = v.get("name", vid)
+        model = v.get("model", "")
+        desc = v.get("description", "")
+        parts = [name]
+        if model:
+            parts.append(model)
+        if desc:
+            for ch in '\n\r|':
+                desc = desc.replace(ch, ' ')
+            desc = ' '.join(desc.split())
+            if len(desc) > 30:
+                parts.append(desc[:30] + '...')
+            else:
+                parts.append(desc)
+        label = " | ".join(parts)
+        choices.append((label, vid))
+    return choices
 
 
 def update_char_count(text):
