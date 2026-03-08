@@ -2704,17 +2704,6 @@ def _refresh_history_on_success(audio_path, search, favorites, tab_filter):
         return gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
     return search_history_filtered(search, favorites, tab_filter)
 
-SPEAKERS = [
-    "aiden",
-    "dylan",
-    "eric",
-    "ono_anna",
-    "ryan",
-    "serena",
-    "sohee",
-    "uncle_fu",
-    "vivian",
-]
 LANGUAGES = [
     "auto",
     "chinese",
@@ -3858,7 +3847,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             cv_audio = gr.Audio(
                                 label="Generated Audio", type="filepath"
                             )
-                            cv_download = gr.File(label="Download Audio", visible=False)
 
                 with gr.TabItem("Clone Voice", id="clone"):
                     gr.HTML(f"<style>{MULTISAMPLE_CSS}</style>")
@@ -3974,7 +3962,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
 
                             vc_status = gr.Textbox(label="Status", interactive=False)
                             vc_output = gr.Audio(label="Test Output", type="filepath")
-                            vc_download = gr.File(label="Download Audio", visible=False)
 
                             gr.HTML(
                                 '<div class="section-header" style="margin-top:1rem;">Save Cloned Voice</div>'
@@ -4067,7 +4054,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             vd_audio = gr.Audio(
                                 label="Generated Audio", type="filepath"
                             )
-                            vd_download = gr.File(label="Download Audio", visible=False)
 
                 with gr.TabItem("Saved Voices", id="saved"):
                     with gr.Row():
@@ -4134,7 +4120,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             sv_audio = gr.Audio(
                                 label="Generated Audio", type="filepath"
                             )
-                            sv_download = gr.File(label="Download Audio", visible=False)
 
                     sv_style_note = gr.Textbox(visible=False)
                     sv_ref_text = gr.Textbox(visible=False)
