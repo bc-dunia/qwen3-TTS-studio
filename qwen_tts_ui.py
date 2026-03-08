@@ -393,7 +393,7 @@ PARAM_TOOLTIPS = {
     "top_k": "Number of candidates for next token. Lower = stable, Higher = diverse. Recommended: 30-50",
     "top_p": "Probability-based token selection range. 1.0 = full range, lower = more certain. Recommended: 0.9-1.0",
     "repetition_penalty": "Prevents sound/word repetition. 1.0 = no penalty, higher = less repetition. Recommended: 1.0-1.1",
-    "max_new_tokens": "(Auto-calculated based on text length. This setting is for reference only)",
+    "max_new_tokens": "Auto-calculated from text length at generation time. Shown value is for reference only",
     "subtalker_temperature": "Voice rhythm/accent control. Default recommended, adjust if needed",
     "subtalker_top_k": "Intonation diversity control. Default recommended",
     "subtalker_top_p": "Intonation selection range. Default recommended",
@@ -6698,12 +6698,13 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                         info=PARAM_TOOLTIPS["repetition_penalty"],
                     )
                     param_max_tokens = gr.Slider(
-                        512,
+                        256,
                         8192,
                         value=settings["max_new_tokens"],
                         step=256,
-                        label="Max Tokens",
+                        label="Auto Max Tokens",
                         info=PARAM_TOOLTIPS["max_new_tokens"],
+                        interactive=False,
                     )
 
                 gr.HTML(
