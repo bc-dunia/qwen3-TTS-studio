@@ -3622,12 +3622,34 @@ def _get_podcast_voice_choices() -> list[tuple[str, str]]:
 
 def _get_persona_voice_choices() -> list[tuple[str, str]]:
     saved = get_saved_voices()
-    choices = [
-        (f"{v['name']} (preset)", f"{v['voice_id']}|preset") for v in PRESET_VOICES
-    ] + [
-        (f"{v.get('name', v.get('id'))} (saved)", f"{v.get('id')}|saved") for v in saved
-    ]
-    return choices
+    preset_choices = []
+    for v in PRESET_VOICES:
+        label = v["name"]
+        if v.get("desc"):
+            label += f" \u2014 {v['desc']}"
+        label += " (Preset)"
+        preset_choices.append((label, f"{v['voice_id']}|preset"))
+    saved_choices = []
+    for v in saved:
+        name = v.get("name", v.get("id"))
+        model = v.get("model", "")
+        desc = v.get("description", "")
+        parts = [name]
+        if model:
+            parts.append(model)
+        if desc:
+            for ch in '\n\r|':
+                desc = desc.replace(ch, ' ')
+            desc = ' '.join(desc.split())
+            if desc:
+                if len(desc) > 30:
+                    parts.append(desc[:30] + '...')
+                else:
+                    parts.append(desc)
+        parts.append("Saved")
+        label = " | ".join(parts)
+        saved_choices.append((label, f"{v.get('id')}|saved"))
+    return preset_choices + saved_choices
 
 
 def _parse_persona_voice_value(value: str) -> tuple[str, str]:
