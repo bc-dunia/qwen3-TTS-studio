@@ -3921,25 +3921,26 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             vc_transcript_state = gr.State(value={})
                             vc_current_file_paths = gr.State(value=[])
 
-                            vc_model = gr.Radio(
-                                ["1.7B-Base", "0.6B-Base"],
-                                value="1.7B-Base",
-                                label="Model",
-                            )
-                            vc_language = gr.Dropdown(
-                                choices=LANGUAGES, value="auto", label="Output Language"
-                            )
-                            vc_ref_language = gr.Dropdown(
-                                choices=LANGUAGES,
-                                value="auto",
-                                label="Reference Language",
-                                info="Language spoken in the reference samples (recommended if you generate in a different language)",
-                            )
-                            vc_crosslingual_opt = gr.Checkbox(
-                                label="Prioritize cross-lingual pronunciation",
-                                value=True,
-                                info="Keeps voice identity but may reduce transcript-based style transfer when languages differ",
-                            )
+                            with gr.Accordion("Generation Settings", open=False):
+                                vc_model = gr.Radio(
+                                    ["1.7B-Base", "0.6B-Base"],
+                                    value="1.7B-Base",
+                                    label="Model",
+                                )
+                                vc_language = gr.Dropdown(
+                                    choices=LANGUAGES, value="auto", label="Output Language"
+                                )
+                                vc_ref_language = gr.Dropdown(
+                                    choices=LANGUAGES,
+                                    value="auto",
+                                    label="Reference Language",
+                                    info="Language spoken in the reference samples (recommended if you generate in a different language)",
+                                )
+                                vc_crosslingual_opt = gr.Checkbox(
+                                    label="Prioritize cross-lingual pronunciation",
+                                    value=True,
+                                    info="Keeps voice identity but may reduce transcript-based style transfer when languages differ",
+                                )
 
                         with gr.Column(scale=2):
                             gr.HTML(
