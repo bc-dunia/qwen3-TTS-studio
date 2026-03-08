@@ -787,6 +787,7 @@ def _render_podcast_transcript_html(transcript_data: dict) -> str:
         )
     return "".join(html_parts)
 
+
 def save_to_history(
     audio_path, text, voice_info, tab_type, gen_time=None, model_name=None, params=None
 ):
@@ -819,7 +820,9 @@ def save_to_history(
     return str(audio_dest)
 
 
-def get_history_items(limit=50, search_query="", favorites_only=False):
+def get_history_items(
+    limit=50, search_query="", favorites_only=False, tab_type_filter=None
+):
     items = []
     favorites = load_favorites()
 
@@ -889,6 +892,13 @@ def get_history_items(limit=50, search_query="", favorites_only=False):
 
                         items.append(meta)
 
+    # Apply tab_type filter
+    if tab_type_filter:
+        if tab_type_filter == "voice":
+            items = [i for i in items if i.get("tab_type", "") != "podcast"]
+        else:
+            items = [i for i in items if i.get("tab_type", "") == tab_type_filter]
+
     # Sort all items by creation time (newest first)
     items.sort(key=lambda x: x.get("created", ""), reverse=True)
 
@@ -896,8 +906,10 @@ def get_history_items(limit=50, search_query="", favorites_only=False):
     return items[:limit]
 
 
-def format_history_for_display(search_query="", favorites_only=False):
-    items = get_history_items(50, search_query, favorites_only)
+def format_history_for_display(
+    search_query="", favorites_only=False, tab_type_filter=None
+):
+    items = get_history_items(50, search_query, favorites_only, tab_type_filter)
     if not items:
         if search_query:
             return '<div class="empty-state">No results found for your search.</div>'
@@ -952,8 +964,8 @@ def format_history_for_display(search_query="", favorites_only=False):
     return "".join(html_parts)
 
 
-def get_history_choices():
-    items = get_history_items(50)
+def get_history_choices(tab_type_filter=None, search_query="", favorites_only=False):
+    items = get_history_items(50, search_query, favorites_only, tab_type_filter)
     choices = []
     for item in items:
         created = item.get("created", "")[:16].replace("T", " ")
@@ -983,8 +995,8 @@ def get_history_choices():
     return choices
 
 
-def get_history_initial():
-    choices = get_history_choices()
+def get_history_initial(tab_type_filter=None, search_query="", favorites_only=False):
+    choices = get_history_choices(tab_type_filter, search_query, favorites_only)
     if not choices:
         return choices, None, None, "", ""
     first_value = choices[0][1]
@@ -1496,7 +1508,7 @@ def generate_custom_voice(
             )
 
             duration = get_audio_duration(history_path)
-            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens}"
+            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens} • Saved to History ✓"
 
             progress(1.0, desc="Complete!")
             return history_path, status
@@ -1628,7 +1640,7 @@ def generate_voice_design(
             )
 
             duration = get_audio_duration(history_path)
-            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens}"
+            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens} • Saved to History ✓"
 
             progress(1.0, desc="Complete!")
             return history_path, status
@@ -2451,7 +2463,7 @@ def generate_with_saved_voice(
             )
 
             duration = get_audio_duration(history_path)
-            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens}"
+            status = f"Done in {gen_time:.1f}s | Duration: {format_duration(duration)} | Tokens: {auto_max_tokens} • Saved to History ✓"
 
             progress(1.0, desc="Complete!")
             return history_path, status
@@ -2618,12 +2630,38 @@ def search_history(query, favorites_only):
     return format_history_for_display(query, favorites_only)
 
 
-def toggle_history_favorite(choice):
-    if not choice:
-        return "Select an item first", gr.update(), gr.update()
+def search_history_filtered(query, favorites_only, tab_filter):
+    """Search/filter history - updates display, dropdown, and clears details."""
+    filter_val = tab_filter.lower() if tab_filter and tab_filter != "All" else "voice"
+    display = format_history_for_display(query, favorites_only, filter_val)
+    choices = get_history_choices(filter_val, query, favorites_only)
+    return display, gr.update(choices=choices, value=None), None, "", ""
 
-    item_id = choice.split(" | ")[0]
-    return toggle_favorite(item_id)
+
+def history_tab_favorite(choice, query, favorites_only, tab_filter):
+    """Toggle favorite with filtered refresh for History tab."""
+    if not choice:
+        return "Select an item first", gr.update(), gr.update(), gr.update(), gr.update()
+
+    toggle_favorite(choice)
+    filter_val = tab_filter.lower() if tab_filter and tab_filter != "All" else "voice"
+    display = format_history_for_display(query, favorites_only, filter_val)
+    choices = get_history_choices(filter_val, query, favorites_only)
+    selected = choice if any(value == choice for _, value in choices) else None
+    if selected is None:
+        return "★ Toggled favorite", display, gr.update(choices=choices, value=None), None, ""
+    return "★ Toggled favorite", display, gr.update(choices=choices, value=selected), gr.update(), gr.update()
+
+
+def history_tab_delete(choice, confirm_state, query, favorites_only, tab_filter):
+    """Delete with filtered refresh for History tab."""
+    result = delete_history_item(choice, confirm_state)
+    if confirm_state and result[0] == "Deleted":
+        filter_val = tab_filter.lower() if tab_filter and tab_filter != "All" else "voice"
+        display = format_history_for_display(query, favorites_only, filter_val)
+        choices = get_history_choices(filter_val, query, favorites_only)
+        return result[0], gr.update(choices=choices, value=None), None, False, display, ""
+    return result[0], result[1], result[2], result[3], gr.update(), gr.update()
 
 
 SPEAKERS = [
@@ -3771,60 +3809,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             )
                             cv_download = gr.File(label="Download Audio", visible=False)
 
-                            gr.HTML(
-                                '<div class="history-section"><div class="history-header">Recent History</div></div>'
-                            )
-                            with gr.Row():
-                                cv_history_search = gr.Textbox(
-                                    placeholder="Search history...",
-                                    show_label=False,
-                                    scale=3,
-                                )
-                                cv_history_favorites = gr.Checkbox(
-                                    label="Favorites only",
-                                    value=False,
-                                    scale=1,
-                                )
-                            cv_history_display = gr.HTML(
-                                value=format_history_for_display(),
-                                elem_classes=["history-display"],
-                            )
-                            cv_init = get_history_initial()
-                            cv_history_dropdown = gr.Dropdown(
-                                choices=cv_init[0],
-                                value=cv_init[1],
-                                label="Select to play",
-                                allow_custom_value=False,
-                            )
-                            cv_history_text = gr.Textbox(
-                                label="Text",
-                                lines=2,
-                                interactive=False,
-                                value=cv_init[3],
-                            )
-                            cv_history_params = gr.Textbox(
-                                label="Generation Settings",
-                                lines=1,
-                                interactive=False,
-                                value=cv_init[4],
-                            )
-                            cv_history_audio = gr.Audio(
-                                label="Playback",
-                                type="filepath",
-                                interactive=False,
-                                value=cv_init[2],
-                            )
-                            with gr.Row(elem_classes=["mini-btn-row"]):
-                                cv_history_refresh = gr.Button("Refresh", size="sm")
-                                cv_history_apply = gr.Button(
-                                    "Apply Settings", size="sm"
-                                )
-                                cv_history_favorite = gr.Button("★ Favorite", size="sm")
-                                cv_history_delete = gr.Button(
-                                    "Delete", size="sm", variant="stop"
-                                )
-                            cv_history_delete_confirm = gr.State(False)
-
                 with gr.TabItem("Clone Voice", id="clone"):
                     gr.HTML(f"<style>{MULTISAMPLE_CSS}</style>")
 
@@ -4034,60 +4018,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             )
                             vd_download = gr.File(label="Download Audio", visible=False)
 
-                            gr.HTML(
-                                '<div class="history-section"><div class="history-header">Recent History</div></div>'
-                            )
-                            with gr.Row():
-                                vd_history_search = gr.Textbox(
-                                    placeholder="Search history...",
-                                    show_label=False,
-                                    scale=3,
-                                )
-                                vd_history_favorites = gr.Checkbox(
-                                    label="Favorites only",
-                                    value=False,
-                                    scale=1,
-                                )
-                            vd_history_display = gr.HTML(
-                                value=format_history_for_display(),
-                                elem_classes=["history-display"],
-                            )
-                            vd_init = get_history_initial()
-                            vd_history_dropdown = gr.Dropdown(
-                                choices=vd_init[0],
-                                value=vd_init[1],
-                                label="Select to play",
-                                allow_custom_value=False,
-                            )
-                            vd_history_text = gr.Textbox(
-                                label="Text",
-                                lines=2,
-                                interactive=False,
-                                value=vd_init[3],
-                            )
-                            vd_history_params = gr.Textbox(
-                                label="Generation Settings",
-                                lines=1,
-                                interactive=False,
-                                value=vd_init[4],
-                            )
-                            vd_history_audio = gr.Audio(
-                                label="Playback",
-                                type="filepath",
-                                interactive=False,
-                                value=vd_init[2],
-                            )
-                            with gr.Row(elem_classes=["mini-btn-row"]):
-                                vd_history_refresh = gr.Button("Refresh", size="sm")
-                                vd_history_apply = gr.Button(
-                                    "Apply Settings", size="sm"
-                                )
-                                vd_history_favorite = gr.Button("★ Favorite", size="sm")
-                                vd_history_delete = gr.Button(
-                                    "Delete", size="sm", variant="stop"
-                                )
-                            vd_history_delete_confirm = gr.State(False)
-
                 with gr.TabItem("Saved Voices", id="saved"):
                     with gr.Row():
                         with gr.Column(scale=1):
@@ -4154,60 +4084,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 label="Generated Audio", type="filepath"
                             )
                             sv_download = gr.File(label="Download Audio", visible=False)
-
-                            gr.HTML(
-                                '<div class="history-section"><div class="history-header">Recent History</div></div>'
-                            )
-                            with gr.Row():
-                                sv_history_search = gr.Textbox(
-                                    placeholder="Search history...",
-                                    show_label=False,
-                                    scale=3,
-                                )
-                                sv_history_favorites = gr.Checkbox(
-                                    label="Favorites only",
-                                    value=False,
-                                    scale=1,
-                                )
-                            sv_history_display = gr.HTML(
-                                value=format_history_for_display(),
-                                elem_classes=["history-display"],
-                            )
-                            sv_init = get_history_initial()
-                            sv_history_dropdown = gr.Dropdown(
-                                choices=sv_init[0],
-                                value=sv_init[1],
-                                label="Select to play",
-                                allow_custom_value=False,
-                            )
-                            sv_history_text = gr.Textbox(
-                                label="Text",
-                                lines=2,
-                                interactive=False,
-                                value=sv_init[3],
-                            )
-                            sv_history_params = gr.Textbox(
-                                label="Generation Settings",
-                                lines=1,
-                                interactive=False,
-                                value=sv_init[4],
-                            )
-                            sv_history_audio = gr.Audio(
-                                label="Playback",
-                                type="filepath",
-                                interactive=False,
-                                value=sv_init[2],
-                            )
-                            with gr.Row(elem_classes=["mini-btn-row"]):
-                                sv_history_refresh = gr.Button("Refresh", size="sm")
-                                sv_history_apply = gr.Button(
-                                    "Apply Settings", size="sm"
-                                )
-                                sv_history_favorite = gr.Button("★ Favorite", size="sm")
-                                sv_history_delete = gr.Button(
-                                    "Delete", size="sm", variant="stop"
-                                )
-                            sv_history_delete_confirm = gr.State(False)
 
                     sv_style_note = gr.Textbox(visible=False)
                     sv_ref_text = gr.Textbox(visible=False)
@@ -5565,7 +5441,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                                 item.data["outline"]
                                             )
                                         if "transcript" in item.data:
-                                            transcript_html = _render_podcast_transcript_html(item.data["transcript"])
+                                            transcript_html = (
+                                                _render_podcast_transcript_html(
+                                                    item.data["transcript"]
+                                                )
+                                            )
 
                                     now = time.monotonic()
                                     elapsed = now - generation_started
@@ -5626,7 +5506,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                         with open(transcript_path) as f:
                                             transcript_data = json.load(f)
                                         if "empty-state" in transcript_html:
-                                            transcript_html = _render_podcast_transcript_html(transcript_data)
+                                            transcript_html = (
+                                                _render_podcast_transcript_html(
+                                                    transcript_data
+                                                )
+                                            )
                                         dialogues = transcript_data.get("dialogues", [])
                                         editor_rows = [
                                             [
@@ -6052,7 +5936,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 gr.update(),
                             )
 
-                        if parsed_state is None or not getattr(parsed_state, "ok", False):
+                        if parsed_state is None or not getattr(
+                            parsed_state, "ok", False
+                        ):
                             yield error_tuple(
                                 "Script not parsed",
                                 'Click "Parse Script" first to detect speakers and assign voices.',
@@ -6311,7 +6197,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                     status_text = item.status
 
                                     if item.data and "transcript" in item.data:
-                                        transcript_html = _render_podcast_transcript_html(item.data["transcript"])
+                                        transcript_html = (
+                                            _render_podcast_transcript_html(
+                                                item.data["transcript"]
+                                            )
+                                        )
 
                                     elapsed = time.monotonic() - generation_started
                                     yield (
@@ -6355,7 +6245,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                     ):
                                         with open(transcript_path) as f:
                                             transcript_data = json.load(f)
-                                        transcript_html = _render_podcast_transcript_html(transcript_data)
+                                        transcript_html = (
+                                            _render_podcast_transcript_html(
+                                                transcript_data
+                                            )
+                                        )
                                         dialogues = transcript_data.get("dialogues", [])
                                         editor_rows = [
                                             [
@@ -6649,6 +6543,68 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                         show_progress="hidden",
                     )
 
+                with gr.TabItem("📋 History", id="history"):
+                    gr.HTML('<div class="section-header">Generation History</div>')
+                    gr.Markdown(
+                        "*Browse, search, and replay your past voice generations.*"
+                    )
+
+                    with gr.Row():
+                        hist_tab_filter = gr.Dropdown(
+                            choices=["All", "Preset", "Clone", "Design", "Saved"],
+                            value="All",
+                            label="Source",
+                            scale=1,
+                        )
+                        hist_search = gr.Textbox(
+                            placeholder="Search history...",
+                            show_label=False,
+                            scale=3,
+                        )
+                        hist_favorites = gr.Checkbox(
+                            label="Favorites only",
+                            value=False,
+                            scale=1,
+                        )
+
+                    hist_display = gr.HTML(
+                        value=format_history_for_display(tab_type_filter="voice"),
+                        elem_classes=["history-display"],
+                    )
+                    hist_init = get_history_initial(tab_type_filter="voice")
+                    hist_dropdown = gr.Dropdown(
+                        choices=hist_init[0],
+                        value=hist_init[1],
+                        label="Select to play",
+                        allow_custom_value=False,
+                    )
+                    hist_text = gr.Textbox(
+                        label="Text",
+                        lines=2,
+                        interactive=False,
+                        value=hist_init[3],
+                    )
+                    hist_params_display = gr.Textbox(
+                        label="Generation Settings",
+                        lines=1,
+                        interactive=False,
+                        value=hist_init[4],
+                    )
+                    hist_audio = gr.Audio(
+                        label="Playback",
+                        type="filepath",
+                        interactive=False,
+                        value=hist_init[2],
+                    )
+                    with gr.Row(elem_classes=["mini-btn-row"]):
+                        hist_refresh = gr.Button("Refresh", size="sm")
+                        hist_apply = gr.Button("Apply Params", size="sm")
+                        hist_favorite = gr.Button("★ Favorite", size="sm")
+                        hist_delete = gr.Button("Delete", size="sm", variant="stop")
+                        hist_export = gr.Button("Export ZIP", size="sm")
+                    hist_delete_confirm = gr.State(False)
+                    hist_export_file = gr.File(label="Download Export", visible=False)
+
         with gr.Column(scale=1, elem_classes=["compact-params-panel"]):
             gr.HTML('<div class="panel-header-compact">Parameters</div>')
 
@@ -6792,128 +6748,6 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         outputs=all_param_sliders + [podcast_num_segments],
     )
 
-    cv_history_dropdown.change(
-        fn=play_history_item_with_details,
-        inputs=[cv_history_dropdown],
-        outputs=[cv_history_audio, cv_history_text, cv_history_params],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    ).then(
-        fn=lambda: False,
-        outputs=[cv_history_delete_confirm],
-    )
-    cv_history_refresh.click(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[cv_history_dropdown],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-    cv_history_apply.click(
-        fn=apply_history_params,
-        inputs=[cv_history_dropdown],
-        outputs=all_param_sliders + [save_indicator],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    cv_history_delete.click(
-        fn=delete_history_item,
-        inputs=[cv_history_dropdown, cv_history_delete_confirm],
-        outputs=[
-            cv_status,
-            cv_history_dropdown,
-            cv_history_audio,
-            cv_history_delete_confirm,
-        ],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    cv_history_favorite.click(
-        fn=toggle_favorite,
-        inputs=[cv_history_dropdown],
-        outputs=[cv_status, cv_history_display, cv_history_dropdown],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    cv_history_search.change(
-        fn=search_history,
-        inputs=[cv_history_search, cv_history_favorites],
-        outputs=[cv_history_display],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-    cv_history_favorites.change(
-        fn=search_history,
-        inputs=[cv_history_search, cv_history_favorites],
-        outputs=[cv_history_display],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-
-    sv_history_dropdown.change(
-        fn=play_history_item_with_details,
-        inputs=[sv_history_dropdown],
-        outputs=[sv_history_audio, sv_history_text, sv_history_params],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    ).then(
-        fn=lambda: False,
-        outputs=[sv_history_delete_confirm],
-    )
-    sv_history_refresh.click(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[sv_history_dropdown],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-    sv_history_apply.click(
-        fn=apply_history_params,
-        inputs=[sv_history_dropdown],
-        outputs=all_param_sliders + [save_indicator],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    sv_history_delete.click(
-        fn=delete_history_item,
-        inputs=[sv_history_dropdown, sv_history_delete_confirm],
-        outputs=[
-            sv_status,
-            sv_history_dropdown,
-            sv_history_audio,
-            sv_history_delete_confirm,
-        ],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    sv_history_favorite.click(
-        fn=toggle_favorite,
-        inputs=[sv_history_dropdown],
-        outputs=[sv_status, sv_history_display, sv_history_dropdown],
-        concurrency_id="history",
-        concurrency_limit=None,
-    )
-    sv_history_search.change(
-        fn=search_history,
-        inputs=[sv_history_search, sv_history_favorites],
-        outputs=[sv_history_display],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-    sv_history_favorites.change(
-        fn=search_history,
-        inputs=[sv_history_search, sv_history_favorites],
-        outputs=[sv_history_display],
-        concurrency_id="history",
-        concurrency_limit=None,
-        show_progress="hidden",
-    )
-
     cv_btn.click(
         fn=generate_custom_voice,
         inputs=[cv_text, cv_model, cv_speaker, cv_language, cv_instruct]
@@ -6922,8 +6756,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[cv_history_dropdown],
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
 
@@ -6936,68 +6771,86 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[vd_history_dropdown],
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
 
-    vd_history_dropdown.change(
+    hist_dropdown.change(
         fn=play_history_item_with_details,
-        inputs=[vd_history_dropdown],
-        outputs=[vd_history_audio, vd_history_text, vd_history_params],
+        inputs=[hist_dropdown],
+        outputs=[hist_audio, hist_text, hist_params_display],
         concurrency_id="history",
         concurrency_limit=None,
         show_progress="hidden",
     ).then(
         fn=lambda: False,
-        outputs=[vd_history_delete_confirm],
+        outputs=[hist_delete_confirm],
     )
-    vd_history_refresh.click(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[vd_history_dropdown],
+    hist_refresh.click(
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         concurrency_id="history",
         concurrency_limit=None,
         show_progress="hidden",
     )
-    vd_history_apply.click(
+    hist_apply.click(
         fn=apply_history_params,
-        inputs=[vd_history_dropdown],
+        inputs=[hist_dropdown],
         outputs=all_param_sliders + [save_indicator],
         concurrency_id="history",
         concurrency_limit=None,
     )
-    vd_history_delete.click(
-        fn=delete_history_item,
-        inputs=[vd_history_dropdown, vd_history_delete_confirm],
+    hist_delete.click(
+        fn=history_tab_delete,
+        inputs=[hist_dropdown, hist_delete_confirm, hist_search, hist_favorites, hist_tab_filter],
         outputs=[
-            vd_status,
-            vd_history_dropdown,
-            vd_history_audio,
-            vd_history_delete_confirm,
+            hist_params_display,
+            hist_dropdown,
+            hist_audio,
+            hist_delete_confirm,
+            hist_display,
+            hist_text,
         ],
         concurrency_id="history",
         concurrency_limit=None,
     )
-    vd_history_favorite.click(
-        fn=toggle_favorite,
-        inputs=[vd_history_dropdown],
-        outputs=[vd_status, vd_history_display, vd_history_dropdown],
+    hist_favorite.click(
+        fn=history_tab_favorite,
+        inputs=[hist_dropdown, hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_params_display, hist_display, hist_dropdown, hist_audio, hist_text],
         concurrency_id="history",
         concurrency_limit=None,
     )
-    vd_history_search.change(
-        fn=search_history,
-        inputs=[vd_history_search, vd_history_favorites],
-        outputs=[vd_history_display],
+    hist_search.change(
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         concurrency_id="history",
         concurrency_limit=None,
+        show_progress="hidden",
     )
-    vd_history_favorites.change(
-        fn=search_history,
-        inputs=[vd_history_search, vd_history_favorites],
-        outputs=[vd_history_display],
+    hist_favorites.change(
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         concurrency_id="history",
         concurrency_limit=None,
+        show_progress="hidden",
+    )
+    hist_tab_filter.change(
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
+        concurrency_id="history",
+        concurrency_limit=None,
+        show_progress="hidden",
+    )
+    hist_export.click(
+        fn=export_history_to_zip,
+        outputs=[hist_export_file, hist_params_display],
     )
 
     def build_transcripts_json(files, t1, t2, t3):
@@ -7185,8 +7038,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
-        fn=lambda: gr.update(choices=get_history_choices()),
-        outputs=[sv_history_dropdown],
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
 
