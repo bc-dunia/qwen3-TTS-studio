@@ -3690,16 +3690,27 @@ settings = load_settings()
 
 
 PRESET_VOICES = [
-    {"voice_id": "aiden", "name": "Aiden"},
-    {"voice_id": "dylan", "name": "Dylan"},
-    {"voice_id": "eric", "name": "Eric"},
-    {"voice_id": "ono_anna", "name": "Anna"},
-    {"voice_id": "ryan", "name": "Ryan"},
-    {"voice_id": "serena", "name": "Serena"},
-    {"voice_id": "sohee", "name": "Sohee"},
-    {"voice_id": "uncle_fu", "name": "Uncle Fu"},
-    {"voice_id": "vivian", "name": "Vivian"},
+    {"voice_id": "aiden", "name": "Aiden", "desc": "Bright American male, clear midrange"},
+    {"voice_id": "dylan", "name": "Dylan", "desc": ""},
+    {"voice_id": "eric", "name": "Eric", "desc": ""},
+    {"voice_id": "ono_anna", "name": "Ono Anna", "desc": "Lively Japanese female"},
+    {"voice_id": "ryan", "name": "Ryan", "desc": "Dynamic male with strong rhythm"},
+    {"voice_id": "serena", "name": "Serena", "desc": "Warm, soft young female"},
+    {"voice_id": "sohee", "name": "Sohee", "desc": "Warm Korean female, rich emotion"},
+    {"voice_id": "uncle_fu", "name": "Uncle Fu", "desc": ""},
+    {"voice_id": "vivian", "name": "Vivian", "desc": "Bright, slightly sharp young female"},
 ]
+
+
+def _get_preset_speaker_choices() -> list[tuple[str, str]]:
+    """Build (label, value) tuples for the Custom Voice speaker dropdown."""
+    choices = []
+    for v in PRESET_VOICES:
+        label = v["name"]
+        if v.get("desc"):
+            label += f" \u2014 {v['desc']}"
+        choices.append((label, v["voice_id"]))
+    return choices
 
 
 def _get_podcast_voice_choices() -> list[tuple[str, str]]:
@@ -3804,7 +3815,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 info="1.7B: Higher quality | 0.6B: Faster",
                             )
                             cv_speaker = gr.Dropdown(
-                                choices=SPEAKERS,
+                                choices=_get_preset_speaker_choices(),
                                 value="serena",
                                 label="Voice Preset",
                                 info="Select a built-in voice character",
