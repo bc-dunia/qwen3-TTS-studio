@@ -3906,7 +3906,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 info="Language spoken in the reference samples (recommended if you generate in a different language)",
                             )
                             vc_crosslingual_opt = gr.Checkbox(
-                                label="다국어 발음 우선",
+                                label="Prioritize cross-lingual pronunciation",
                                 value=True,
                                 info="Keeps voice identity but may reduce transcript-based style transfer when languages differ",
                             )
@@ -4077,7 +4077,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             )
 
                             sv_crosslingual_opt = gr.Checkbox(
-                                label="다국어 발음 우선",
+                                label="Prioritize cross-lingual pronunciation",
                                 value=True,
                                 info="If output language differs from the reference language, prioritize pronunciation; may reduce style transfer",
                             )
