@@ -2664,6 +2664,16 @@ def history_tab_delete(choice, confirm_state, query, favorites_only, tab_filter)
     return result[0], result[1], result[2], result[3], gr.update(), gr.update()
 
 
+def _disable_btn():
+    """Return a gr.update that disables a button with a processing label."""
+    return gr.update(interactive=False, value="\u23f3 Processing...")
+
+
+def _enable_btn(label="Generate Speech"):
+    """Return a gr.update that re-enables a button with its original label."""
+    return gr.update(interactive=True, value=label)
+
+
 SPEAKERS = [
     "aiden",
     "dylan",
@@ -6749,6 +6759,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
     )
 
     cv_btn.click(
+        fn=_disable_btn,
+        outputs=[cv_btn],
+        queue=False,
+        show_progress="hidden",
+    ).then(
         fn=generate_custom_voice,
         inputs=[cv_text, cv_model, cv_speaker, cv_language, cv_instruct]
         + all_param_sliders,
@@ -6756,6 +6771,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
+        fn=_enable_btn,
+        outputs=[cv_btn],
+        queue=False,
+        show_progress="hidden",
+    ).success(
         fn=search_history_filtered,
         inputs=[hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
@@ -6765,12 +6785,22 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
     vd_text.change(fn=update_char_count, inputs=[vd_text], outputs=[vd_char_count])
 
     vd_btn.click(
+        fn=_disable_btn,
+        outputs=[vd_btn],
+        queue=False,
+        show_progress="hidden",
+    ).then(
         fn=generate_voice_design,
         inputs=[vd_text, vd_description, vd_language] + all_param_sliders,
         outputs=[vd_audio, vd_status],
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
+        fn=_enable_btn,
+        outputs=[vd_btn],
+        queue=False,
+        show_progress="hidden",
+    ).success(
         fn=search_history_filtered,
         inputs=[hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
@@ -6917,6 +6947,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         )
 
     vc_clone_btn.click(
+        fn=_disable_btn,
+        outputs=[vc_clone_btn],
+        queue=False,
+        show_progress="hidden",
+    ).then(
         fn=flush_transcripts_to_state,
         inputs=[
             vc_transcript_state,
@@ -6952,6 +6987,16 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         ],
         concurrency_limit=1,
         concurrency_id="generation",
+    ).then(
+        fn=lambda: _enable_btn("Clone & Generate"),
+        outputs=[vc_clone_btn],
+        queue=False,
+        show_progress="hidden",
+    ).success(
+        fn=search_history_filtered,
+        inputs=[hist_search, hist_favorites, hist_tab_filter],
+        outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
+        show_progress="hidden",
     )
 
     vc_auto_transcribe_btn.click(
@@ -7031,6 +7076,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
     )
 
     sv_generate_btn.click(
+        fn=_disable_btn,
+        outputs=[sv_generate_btn],
+        queue=False,
+        show_progress="hidden",
+    ).then(
         fn=generate_with_saved_voice,
         inputs=[sv_text, sv_voice_dropdown, sv_language, sv_crosslingual_opt]
         + all_param_sliders,
@@ -7038,6 +7088,11 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         concurrency_limit=1,
         concurrency_id="generation",
     ).then(
+        fn=_enable_btn,
+        outputs=[sv_generate_btn],
+        queue=False,
+        show_progress="hidden",
+    ).success(
         fn=search_history_filtered,
         inputs=[hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
