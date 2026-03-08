@@ -4062,6 +4062,10 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                     with gr.Row():
                         with gr.Column(scale=1):
                             gr.HTML('<div class="section-header">Your Voices</div>')
+                            gr.Markdown(
+                                "*Voices saved from the Clone Voice tab appear here for reuse.*",
+                                elem_classes=["info-text"],
+                            )
 
                             sv_voice_dropdown = gr.Dropdown(
                                 choices=get_saved_voice_choices(),
