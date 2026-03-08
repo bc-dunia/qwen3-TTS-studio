@@ -2781,6 +2781,36 @@ footer { display: none !important; }
     border-bottom: 1px solid var(--gray-200);
 }
 
+/* ===== INFO TEXT ===== */
+.prose.info-text {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+}
+
+.prose.info-text * {
+    color: inherit;
+}
+
+.prose.info-text p {
+    line-height: 1.4;
+}
+
+.info-text :is(p, ul) {
+    margin: 0 0 0.5rem;
+}
+
+.info-text ul {
+    padding-left: 1rem;
+}
+
+.info-text li {
+    margin: 0.15rem 0;
+}
+
+.info-text :is(p, ul):last-child {
+    margin-bottom: 0;
+}
+
 /* ===== PARAMETERS PANEL ===== */
 .params-panel {
     background: var(--white);
