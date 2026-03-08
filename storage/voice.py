@@ -41,7 +41,7 @@ def get_available_voices() -> list[dict[str, Any]]:
     for speaker in preset_speakers:
         voices.append({
             "voice_id": speaker,
-            "name": speaker.title(),
+            "name": speaker.replace("_", " ").title(),
             "type": "preset"
         })
     
