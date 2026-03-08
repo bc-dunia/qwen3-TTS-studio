@@ -1533,7 +1533,8 @@ def generate_custom_voice(
             progress(1.0, desc="Complete!")
             return history_path, status
     except Exception as e:
-        raise gr.Error(format_user_error(e))
+        gr.Warning(format_user_error(e))
+        return None, f"❌ Error: {format_user_error(e)}"
     finally:
         del wavs
         _gpu_cleanup()
@@ -1669,7 +1670,8 @@ def generate_voice_design(
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
     except Exception as e:
-        raise gr.Error(format_user_error(e))
+        gr.Warning(format_user_error(e))
+        return None, f"❌ Error: {format_user_error(e)}"
     finally:
         del wavs
         _gpu_cleanup()
@@ -2030,7 +2032,8 @@ def clone_voice_multi(
         return output_audio, prompt_temp.name, model_name, samples_meta_json, status
     except Exception as e:
         traceback.print_exc()
-        raise gr.Error(format_user_error(e))
+        gr.Warning(format_user_error(e))
+        return None, gr.skip(), gr.skip(), gr.skip(), f"❌ Error: {format_user_error(e)}"
     finally:
         del wavs
         del voice_clone_prompt
@@ -2488,7 +2491,8 @@ def generate_with_saved_voice(
             progress(1.0, desc="Complete!")
             return history_path, status
     except Exception as e:
-        raise gr.Error(format_user_error(e))
+        gr.Warning(format_user_error(e))
+        return None, f"❌ Error: {format_user_error(e)}"
     finally:
         del wavs
         del voice_clone_prompt
@@ -2693,6 +2697,12 @@ def _enable_btn(label="Generate Speech"):
     """Return a gr.update that re-enables a button with its original label."""
     return gr.update(interactive=True, value=label)
 
+
+def _refresh_history_on_success(audio_path, search, favorites, tab_filter):
+    """Refresh history tab only when generation succeeded (audio_path is truthy)."""
+    if not audio_path:
+        return gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
+    return search_history_filtered(search, favorites, tab_filter)
 
 SPEAKERS = [
     "aiden",
@@ -6796,9 +6806,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         outputs=[cv_btn],
         queue=False,
         show_progress="hidden",
-    ).success(
-        fn=search_history_filtered,
-        inputs=[hist_search, hist_favorites, hist_tab_filter],
+    ).then(
+        fn=_refresh_history_on_success,
+        inputs=[cv_audio, hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
@@ -6821,9 +6831,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         outputs=[vd_btn],
         queue=False,
         show_progress="hidden",
-    ).success(
-        fn=search_history_filtered,
-        inputs=[hist_search, hist_favorites, hist_tab_filter],
+    ).then(
+        fn=_refresh_history_on_success,
+        inputs=[vd_audio, hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
@@ -7013,9 +7023,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         outputs=[vc_clone_btn],
         queue=False,
         show_progress="hidden",
-    ).success(
-        fn=search_history_filtered,
-        inputs=[hist_search, hist_favorites, hist_tab_filter],
+    ).then(
+        fn=_refresh_history_on_success,
+        inputs=[vc_output, hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
@@ -7113,9 +7123,9 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
         outputs=[sv_generate_btn],
         queue=False,
         show_progress="hidden",
-    ).success(
-        fn=search_history_filtered,
-        inputs=[hist_search, hist_favorites, hist_tab_filter],
+    ).then(
+        fn=_refresh_history_on_success,
+        inputs=[sv_audio, hist_search, hist_favorites, hist_tab_filter],
         outputs=[hist_display, hist_dropdown, hist_audio, hist_text, hist_params_display],
         show_progress="hidden",
     )
