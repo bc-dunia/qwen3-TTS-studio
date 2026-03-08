@@ -3841,7 +3841,8 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             )
 
                             cv_status = gr.Textbox(
-                                label="Status", interactive=False, show_label=True
+                                label="Status", interactive=False, show_label=True,
+                                value="Ready to generate...",
                             )
 
                             cv_audio = gr.Audio(
@@ -3960,7 +3961,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 size="lg",
                             )
 
-                            vc_status = gr.Textbox(label="Status", interactive=False)
+                            vc_status = gr.Textbox(label="Status", interactive=False, value="Ready to generate...")
                             vc_output = gr.Audio(label="Test Output", type="filepath")
 
                             gr.HTML(
@@ -4048,7 +4049,8 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                             )
 
                             vd_status = gr.Textbox(
-                                label="Status", interactive=False, show_label=True
+                                label="Status", interactive=False, show_label=True,
+                                value="Ready to generate...",
                             )
 
                             vd_audio = gr.Audio(
@@ -4116,7 +4118,7 @@ with gr.Blocks(title="Qwen3-TTS Studio", css=custom_css) as demo:
                                 size="lg",
                             )
 
-                            sv_status = gr.Textbox(label="Status", interactive=False)
+                            sv_status = gr.Textbox(label="Status", interactive=False, value="Ready to generate...")
                             sv_audio = gr.Audio(
                                 label="Generated Audio", type="filepath"
                             )
