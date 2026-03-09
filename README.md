@@ -264,7 +264,7 @@ Notes:
 - Models are mounted at runtime and not bundled in the image. Mount the same directories as shown above.
 - Podcast features (LLM providers) are optional. If you use the Podcast tab, pass your keys via env vars or `--env-file .env`.
 - On Apple Silicon/ARM64, if you see `no matching manifest for linux/arm64/v8`, use `--platform linux/amd64` in both `docker pull` and `docker run`.
-- For reproducible deployments, pin a release tag (for example: `ghcr.io/bc-dunia/qwen3-tts-studio:0.1.6`).
+- For reproducible deployments, pin a release tag (for example: `ghcr.io/bc-dunia/qwen3-tts-studio:0.1.7`).
 - If you use other model variants (0.6B, VoiceDesign), mount those directories the same way.
 
 ### Available Models
