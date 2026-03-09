@@ -20,12 +20,14 @@ Qwen3-TTS is a powerful text-to-speech model, but using it directly requires dea
   - Multi-sample support with automatic quality analysis (duration, SNR)
   - Weighted embedding combination for more consistent results
   - Auto-transcription via OpenAI Whisper API
+  - Cross-lingual pronunciation toggle for mixed-language content
 - **Custom Voice**: 9 preset voices with style control (Vivian, Serena, Ryan, etc.)
 - **Voice Design**: Describe your desired voice in natural language
 - **10 Language Support**: Korean, English, Chinese, Japanese, German, French, Russian, Portuguese, Spanish, Italian
 
 ### Podcast Generation
 - **One-Click Podcasts**: Enter a topic, get a complete podcast
+- **Custom Script Input**: Write your own dialogue script instead of relying on AI generation
 - **AI Script Writing**: LLM-powered outline and transcript generation
 - **Multi-Provider LLM Support**: OpenAI, Ollama, OpenRouter, and Claude (Anthropic API)
 - **Multi-Speaker Support**: Assign different voices to each speaker
@@ -33,7 +35,8 @@ Qwen3-TTS is a powerful text-to-speech model, but using it directly requires dea
 
 ### Quality of Life
 - **Parameter Presets**: Quick presets for different use cases
-- **Generation History**: Browse, search, and replay past generations
+- **Unified History Tab**: Browse, search, and replay all past generations in one place
+- **Enriched Dropdowns**: Voice selectors display name, model, and description at a glance
 - **Auto-Save Settings**: Your preferences persist across sessions
 - **Real-time Feedback**: Character count, generation time, and status indicators
 
@@ -285,7 +288,7 @@ Notes:
 | Serena | Warm, soft young female | Chinese |
 | Ryan | Dynamic male with strong rhythm | English |
 | Aiden | Bright American male, clear midrange | English |
-| Ono_Anna | Lively Japanese female | Japanese |
+| Ono Anna | Lively Japanese female | Japanese |
 | Sohee | Warm Korean female, rich emotion | Korean |
 
 ## Project Structure
@@ -308,6 +311,7 @@ qwen3-TTS-studio/
 │   ├── models.py               # Pydantic models
 │   ├── outline.py              # AI outline generation
 │   ├── transcript.py           # AI transcript generation
+│   ├── script_parser.py        # Custom script parsing
 │   ├── prompts.py              # LLM prompts
 │   └── session.py              # Session management
 │
