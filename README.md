@@ -2,6 +2,8 @@
 
 A professional-grade interface for [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS), designed to unlock the model's full potential with fine-grained control and intuitive workflows.
 
+This model enables Qwen3-TTS Instant voice cloning, If you want a serious finetuning, use https://github.com/bc-dunia/qwen3-TTS-finetune-studio
+
 ![Qwen3-TTS Studio Screenshot](docs/screenshot.png)
 
 ## Why This Project?
